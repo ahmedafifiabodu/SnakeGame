@@ -1,4 +1,4 @@
-# Snake Game (Assessment 2)
+# Snake Game
 
 A simple console-based Snake game written in C++ for Windows. This repository contains the game code, level definitions, and a small custom console renderer that sizes the console to the active level.
 
