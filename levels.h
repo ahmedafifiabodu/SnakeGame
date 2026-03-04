@@ -20,6 +20,9 @@ struct LevelConfig
 	int snakeSpeed;
 
 	bool isDynamic;
+
+	int offsetX;
+	int offsetY;
 };
 
 LevelConfig loadLevel(std::string levelName);

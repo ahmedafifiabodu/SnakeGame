@@ -1,4 +1,5 @@
 #include "console.h"
+#include <algorithm>
 
 static HANDLE outputHandle = nullptr;
 static HANDLE inputHandle = nullptr;
@@ -61,7 +62,7 @@ void clearBuffer()
 	//		for every x in WIDTH :
 	//			buffer[y][x].Char.AsciiChar = ' '
 	//			buffer[y][x].Attributes = default color
-	// Hint: you can use memset() to clear the buffer faster than nested loops
+	// look up for: memset() to clear the buffer faster than nested loops
 
 	for (int y = 0; y < bufferHeight; ++y) {
 		for (int x = 0; x < bufferWidth; ++x) {
@@ -87,7 +88,7 @@ void renderBuffer()
 	WriteConsoleOutput(outputHandle, (CHAR_INFO*)buffer.data(), { (SHORT)bufferWidth, (SHORT)bufferHeight }, { 0, 0 }, &region); // Write the buffer to the console
 }
 
-void drawTile(int x, int y, char c, color colors)
+void drawTile(int x, int y, char c, WORD colors)
 {
 	if (x < 0 || x >= bufferWidth) return;
 	if (y < 0 || y >= bufferHeight) return;
@@ -105,14 +106,14 @@ void drawTile(int x, int y, char c)
 	buffer[static_cast<std::vector<CHAR_INFO, std::allocator<CHAR_INFO>>::size_type>(y) * bufferWidth + x].Attributes = FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE; // default color (white)
 }
 
-void drawString(int x, int y, std::string s, color colors)
+void drawString(int x, int y, std::string s, WORD colors)
 {
 	for (size_t i = 0; i < s.length(); i++)
-		drawTile(x + i, y, s[i], colors);
+		drawTile(x + (int)i, y, s[i], colors);
 }
 
 void drawString(int x, int y, std::string s)
 {
 	for (size_t i = 0; i < s.length(); i++)
-		drawTile(x + i, y, s[i]);
+		drawTile(x + (int)i, y, s[i]);
 }
