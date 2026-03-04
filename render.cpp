@@ -10,7 +10,7 @@ void renderLevel(const LevelConfig& config)
 	for (int y = 0; y < config.height; ++y) {
 		for (int x = 0; x < config.width; ++x) {
 			if (config.layout[y][x] == '#') {
-				drawTile(x + config.offsetX, y + config.offsetY, '#', WHITE);
+				drawTile(x + config.offsetX, y + config.offsetY, '#', config.palette.wallColor);
 			}
 		}
 	}
@@ -21,22 +21,22 @@ void renderSnake(const GameState& state)
 	// loop through every segment in state.snake:
 	//     drawTile(segment.X + state.offsetX, segment.Y + state.offsetY, 'O', GREEN)
 	for (const COORD& segment : state.snake)
-		drawTile(segment.X + state.level.offsetX, segment.Y + state.level.offsetY, 'O', GREEN);
+		drawTile(segment.X + state.level.offsetX, segment.Y + state.level.offsetY, state.level.palette.snakeSymbol, state.level.palette.snakeColor);
 }
 
 void renderFood(const GameState& state)
 {
 	//drawTile(state.food.X + state.offsetX, state.food.Y + state.offsetY, 'X', RED)
-	drawTile(state.food.X + state.level.offsetX, state.food.Y + state.level.offsetY, 'X', RED);
+	drawTile(state.food.X + state.level.offsetX, state.food.Y + state.level.offsetY, state.level.palette.foodSymbol, state.level.palette.foodColor);
 }
 
 void renderScore(const GameState& state, const LevelConfig& level)
 {
 	std::string scoreText = "Score: " + std::to_string(state.score);
-	int xPosition = level.width - scoreText.length();
+	int xPosition = level.width - (int)scoreText.length();
 	int yPosition = 0;
 
-	for (size_t i = 0; i < scoreText.length(); ++i)
+	for (int i = 0; i < scoreText.length(); ++i)
 		drawTile(xPosition + i, yPosition, scoreText[i], WHITE);
 }
 
@@ -52,9 +52,14 @@ void renderHeader(const std::string& headerText, const LevelConfig& level, const
 	// Draw level name on the LEFT
 	drawString(1, 0, headerText, HEADER_BG);
 
+	// Draw player name in the CENTER
+	std::string playerNameText = "Player: " + state.level.palette.playerName;
+	int playerNameXPosition = (consoleWidth - (int)playerNameText.length()) / 2;
+	drawString(playerNameXPosition, 0, playerNameText, HEADER_BG);
+
 	// Draw score on the RIGHT
 	std::string scoreText = "Score: " + std::to_string(state.score);
-	int scoreXPosition = level.width - scoreText.length() - 1; // -1 for some padding
+	int scoreXPosition = consoleWidth - (int)scoreText.length() - 1;
 	drawString(scoreXPosition, 0, scoreText, HEADER_BG);
 }
 
@@ -85,6 +90,6 @@ void renderGameOver(const GameState& state, const LevelConfig& level)
 	int finalScoreX = (consoleWidth - (int)finalScoreText.length()) / 2;
 	int finalScoreY = startY + (int)gameOverArt.size() + 1;
 
-	for (size_t i = 0; i < finalScoreText.length(); ++i)
+	for (int i = 0; i < (int)finalScoreText.length(); ++i)
 		drawTile(finalScoreX + i, finalScoreY, finalScoreText[i], YELLOW);
 }

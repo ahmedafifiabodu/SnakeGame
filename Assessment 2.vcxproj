@@ -132,6 +132,7 @@
     <ClCompile Include="levels.cpp" />
     <ClCompile Include="logic.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="palette.cpp" />
     <ClCompile Include="render.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -140,6 +141,7 @@
     <ClInclude Include="levels.h" />
     <ClInclude Include="logic.h" />
     <ClInclude Include="main.h" />
+    <ClInclude Include="palette.h" />
     <ClInclude Include="render.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

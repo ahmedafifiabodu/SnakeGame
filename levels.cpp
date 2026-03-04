@@ -17,8 +17,6 @@ LevelConfig loadLevel(std::string levelName)
 				"#                                                #",
 				"#                                                #",
 				"#                                                #",
-				"#           #                                    #",
-				"#                                       ####     #",
 				"#                                                #",
 				"#                                                #",
 				"#                                                #",
@@ -29,7 +27,6 @@ LevelConfig loadLevel(std::string levelName)
 				"#                                                #",
 				"#                                                #",
 				"#                                                #",
-				"#                            #                   #",
 				"#                                                #",
 				"#                                                #",
 				"#                                                #",
@@ -37,7 +34,10 @@ LevelConfig loadLevel(std::string levelName)
 				"#                                                #",
 				"#                                                #",
 				"#                                                #",
-				"#             ##                                 #",
+				"#                                                #",
+				"#                                                #",
+				"#                                                #",
+				"#                                                #",
 				"#                                                #",
 				"#                                                #",
 				"#                                                #",
@@ -134,6 +134,10 @@ LevelConfig loadLevel(std::string levelName)
 	{
 		return generateDynamicLevel(levelName);
 	}
+
+	// Fallback for unknown level names
+	std::cerr << "Warning: unknown level '" << levelName << "'. Generating a dynamic level instead.\n";
+	return generateDynamicLevel(levelName);
 }
 
 LevelConfig generateDynamicLevel(std::string levelName)

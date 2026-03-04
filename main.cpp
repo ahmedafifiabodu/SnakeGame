@@ -13,7 +13,7 @@ int main(int argc, char* argv[])
 		return 1;
 	}
 
-	std::srand(std::time(nullptr));
+	std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
 	//levelName = argv[1]
 	std::string levelName = argv[1];
@@ -33,6 +33,8 @@ int main(int argc, char* argv[])
 	config.offsetY = PADDING + HEADER;
 
 	setupCustomConsole(consoleWidth, consoleHeight);
+
+	config.palette = selectPalette();
 
 	// 3. Game loop:
 	//    a. Read input
