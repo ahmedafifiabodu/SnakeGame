@@ -5,29 +5,20 @@ InputState readInput()
 	InputState inputState = { NONE, false };
 
 	if (getIfUpKeyIsCurrentlyDown())
-	{
 		inputState.direction = UP;
-	}
 	else if (getIfDownKeyIsCurrentlyDown())
-	{
 		inputState.direction = DOWN;
-	}
 	else if (getIfLeftKeyIsCurrentlyDown())
-	{
 		inputState.direction = LEFT;
-	}
 	else if (getIfRightKeyIsCurrentlyDown())
-	{
 		inputState.direction = RIGHT;
-	}
 	else if (getIfEscKeyIsCurrentlyDown())
-	{
 		inputState.quit = true;
-	}
 	else
-	{
 		inputState.direction = NONE;
-	}
+
+	if (getIfPauseKeyIsCurrentlyDown())
+		inputState.pause = true;
 
 	return inputState;
 }
@@ -60,4 +51,9 @@ int getIfRightKeyIsCurrentlyDown()
 int getIfEscKeyIsCurrentlyDown()
 {
 	return (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
+}
+
+int getIfPauseKeyIsCurrentlyDown()
+{
+	return (GetAsyncKeyState('P') & 0x8000) != 0;
 }

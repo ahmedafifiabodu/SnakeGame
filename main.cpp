@@ -34,9 +34,10 @@ int main(int argc, char* argv[])
 
 	setupCustomConsole(consoleWidth, consoleHeight);
 
+	// 3. Select palette
 	config.palette = selectPalette();
 
-	// 3. Game loop:
+	// 4. Game loop:
 	//    a. Read input
 	//    b. Update game state
 	//    c. Render
@@ -45,6 +46,7 @@ int main(int argc, char* argv[])
 
 	auto lastTick = std::chrono::steady_clock::now();
 	Direction bufferedDirection = RIGHT;
+	bool perviouslyPaused = gameState.isPaused;
 
 	while (gameState.isRunning)
 	{
@@ -57,6 +59,10 @@ int main(int argc, char* argv[])
 			continue;
 		}
 
+		if (inputState.pause && !perviouslyPaused)
+			gameState.isPaused = !gameState.isPaused;
+		perviouslyPaused = inputState.pause;
+
 		if (inputState.direction != NONE)
 			bufferedDirection = inputState.direction;
 
@@ -64,7 +70,7 @@ int main(int argc, char* argv[])
 		auto now = std::chrono::steady_clock::now();
 		auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTick).count();
 
-		if (elapsed >= config.snakeSpeed)
+		if (!gameState.isPaused && elapsed >= config.snakeSpeed)
 		{
 			inputState.direction = bufferedDirection;
 			updateLogic(gameState, inputState);
@@ -78,6 +84,14 @@ int main(int argc, char* argv[])
 			renderBuffer();
 
 			lastTick = now;
+		}
+
+		if (gameState.isPaused)
+		{
+			clearBuffer();
+			renderHeader("PAUSED - Press P to Resume", config, gameState);
+			renderPauseScreen(config);
+			renderBuffer();
 		}
 
 		Sleep(10);
@@ -99,6 +113,6 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	// 4. deleteCustomConsole()
+	// 5. deleteCustomConsole()
 	deleteCustomConsole();
 }

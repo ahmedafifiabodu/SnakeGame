@@ -78,7 +78,6 @@ void renderGameOver(const GameState& state, const LevelConfig& level)
 
 	// Use the full console/buffer width for centering (same formula as renderHeader)
 	int consoleWidth = level.width + level.offsetX * 2;
-
 	int startX = (consoleWidth - (int)gameOverArt[0].length()) / 2;
 	int startY = level.offsetY + (level.height / 2) - 5; // account for the Y offset
 
@@ -92,4 +91,24 @@ void renderGameOver(const GameState& state, const LevelConfig& level)
 
 	for (int i = 0; i < (int)finalScoreText.length(); ++i)
 		drawTile(finalScoreX + i, finalScoreY, finalScoreText[i], YELLOW);
+}
+
+void renderPauseScreen(const LevelConfig& level)
+{
+	std::vector<std::string> pauseText = {
+	" #####    ###    #   #   ####   ##### ",
+	"#     #  #   #   #   #  #       #     ",
+	"#     # #     #  #   #  #       #     ",
+	"#####   #######  #   #   ###    ##### ",
+	"#       #     #  #   #      #   #     ",
+	"#       #     #  #   #      #   #     ",
+	"#       #     #   ###   ####    ##### "
+	};
+
+	int consoleWidth = level.width + level.offsetX * 2;
+	int startX = (consoleWidth - (int)pauseText[0].length()) / 2;
+	int startY = level.offsetY + (level.height / 2) - 5; // account for the Y offset
+
+	for (int i = 0; i < (int)pauseText.size(); ++i)
+		drawString(startX, startY + i, pauseText[i], CYAN);
 }

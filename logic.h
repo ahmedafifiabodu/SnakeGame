@@ -9,12 +9,13 @@
 struct GameState
 {
 	std::deque<COORD> snake;   // head at front, tail at back
-	COORD food;
-	Direction snakeDirection;
-	int score;
-	bool isRunning;
-	bool isDead;
+	COORD food{ 0, 0 };
+	Direction snakeDirection{ RIGHT };
+	int score{ 0 };
+	bool isRunning{ false };
+	bool isDead{ false };
 	LevelConfig level;         // current level data
+	bool isPaused{ false };
 };
 
 GameState initGame(const LevelConfig& config);

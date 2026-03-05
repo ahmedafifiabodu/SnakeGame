@@ -7,6 +7,7 @@ GameState initGame(const LevelConfig& config)
 	state.score = 0;
 	state.isRunning = true;
 	state.isDead = false;
+	state.isPaused = false;
 	state.snakeDirection = RIGHT;
 
 	//├── snake starts as 3 segments at center:
