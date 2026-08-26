@@ -230,6 +230,115 @@ board rather than from an unmanageable tail.
 
 ## Architecture
 
+Four layers, each only knowing about the one below it: `core` (window, input, RNG,
+text/shape rasterising), `game` (rules — snake, level, food, abilities, progression,
+none of it aware SFML exists), `states` (the screens, wiring `game` to input and to
+`ui`), `ui` (drawing helpers built on `core::Screen`). `App` and `main.cpp` sit above
+all four and only exist to parse argv and drive the loop or a capture.
+
+```mermaid
+flowchart TD
+    subgraph entry [entry]
+        main[main.cpp] --> App
+    end
+    subgraph states_l [states]
+        GameState[GameState / StateMachine]
+        MenuState
+        PlayState
+        OverlayStates["OverlayStates<br/>Pause · LevelComplete · GameOver"]
+    end
+    subgraph game_l [game — no SFML dependency]
+        Snake
+        Level
+        LevelGenerator
+        Food
+        Ability
+        Progression
+        SnakeType
+    end
+    subgraph ui_l [ui]
+        Draw
+        Hud
+        Effects
+        Art
+    end
+    subgraph core_l [core]
+        Screen
+        Input
+        Rng
+        GlyphAtlas
+        Textures
+    end
+    subgraph tools_l [tools — capture only]
+        Autoplay
+    end
+
+    App --> GameState
+    GameState --> MenuState & PlayState & OverlayStates
+    PlayState --> Snake & Level & Food & Ability & Progression
+    MenuState --> SnakeType
+    LevelGenerator --> Level
+    PlayState --> ui_l
+    MenuState --> ui_l
+    OverlayStates --> ui_l
+    ui_l --> Screen
+    states_l --> Input
+    App --> Screen & Input & Rng
+    Autoplay -.reads state, presses keys through Input.-> PlayState
+    Autoplay -.-> Input
+```
+
+`game` never includes an SFML header — `Snake`, `Level`, `Food`, `Ability` and
+`Progression` are plain data and logic, which is what makes `--selftest` able to
+generate and validate 20,000 levels with no window, no renderer, and no frame loop.
+
+### The state stack
+
+Screens are a stack, not a single "current screen" variable. `Pause`, `LevelComplete`
+and `GameOver` are **overlays**: pushed on top of `PlayState` rather than replacing it,
+so the board underneath keeps its snake, its score and its combo — which is why the
+pause and level-clear screenshots above still show a live board behind the panel.
+`StateMachine::update` only calls `update` on the top of the stack (an overlay
+genuinely suspends the world), but `render` walks back to the last non-overlay state
+and draws forward, compositing every overlay above it on top.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Menu
+
+    Menu --> Play : Start Game (reset)
+
+    state Play {
+        [*] --> Running
+        Running --> Running : level cleared, more levels\n(pop LevelComplete, advance)
+    }
+
+    Play --> Pause : P / Esc (push)
+    Pause --> Play : Resume (pop)
+    Pause --> Menu : Back to menu (reset)
+    Pause --> [*] : Quit
+
+    Play --> LevelComplete : target score reached (push)
+    LevelComplete --> Play : Enter, after a beat (pop)
+
+    Play --> GameOver : collision / hazard (push)
+    GameOver --> Play : Retry (reset, new run)
+    GameOver --> Menu : Main menu (reset)
+    GameOver --> [*] : Quit
+
+    Menu --> [*] : Esc / Quit
+```
+
+Three design decisions worth calling out beyond the stack itself:
+
+- **Snake types are a data table, not a class hierarchy.** Adding a snake is one row in
+  `SnakeType.cpp` plus, if it brings a new ability, one case in `Ability.cpp`.
+- **Ability effects live in one file.** Gameplay code never branches on `AbilityKind`;
+  it asks `speedScale()`, `canPhaseWalls()`, `scoreMultiplier()` and so on.
+- **Levels are generated, then proven, before they're handed to `PlayState`.** See
+  "Level generation" above — the generator's invariants are checked by construction,
+  not hoped for at runtime.
+
 ```
 src/
   main.cpp          entry point and mode dispatch
@@ -265,14 +374,8 @@ src/
     Layout.h  canvas, cell grid and board pixel constants
 ```
 
-Three decisions worth calling out:
-
-- **The state machine is a stack.** Pause, level complete and game over are overlays:
-  they suspend the world and render on top of it instead of tearing it down.
-- **Snake types are a data table, not a class hierarchy.** Adding a snake is one row in
-  `SnakeType.cpp` plus, if it brings a new ability, one case in `Ability.cpp`.
-- **Ability effects live in one file.** Gameplay code never branches on `AbilityKind`;
-  it asks `speedScale()`, `canPhaseWalls()`, `scoreMultiplier()` and so on.
+This tree is the same four layers as the dependency diagram above, just laid out as
+paths instead of arrows.
 
 ### Rendering
 
@@ -288,6 +391,29 @@ calls across five layers, in order:
 | Cell | alpha | HUD, menus, panels, all text |
 | Overlay | alpha | Pixel-precise widgets that must sit over a panel — the meters |
 | Overlay glow | additive | Their bloom |
+
+```mermaid
+flowchart LR
+    subgraph frame [one Screen::present]
+        direction LR
+        Pixel(("Pixel<br/>alpha")) --> Glow(("Glow<br/>additive")) --> Cell(("Cell<br/>alpha")) --> Overlay(("Overlay<br/>alpha")) --> OverlayGlow(("Overlay glow<br/>additive"))
+    end
+    Pixel -. board, walls,\nsnake, food, hazards .- note1[ ]
+    Glow -. neon bloom\nfor the pixel layer .- note2[ ]
+    Cell -. HUD, menus,\npanels, all text .- note3[ ]
+    Overlay -. meters that must\nsit over a panel .- note4[ ]
+    style note1 fill:none,stroke:none
+    style note2 fill:none,stroke:none
+    style note3 fill:none,stroke:none
+    style note4 fill:none,stroke:none
+```
+
+Each layer is one `sf::VertexArray`, filled by every state's `render()` call across the
+frame and flushed as a single draw call in `Screen::present` — so five layers means five
+draw calls for everything on the atlas: walls, snake, particles, HUD text, panels, all
+of it, however many there are. Loaded images (the logo, portraits, board sprites) sit
+outside the atlas and each cost their own draw call, inserted before, between or after
+the five depending on their `SpriteLayer` (`Background` / `World` / `Ui`).
 
 Two coordinate spaces share that canvas. **Cells** (16×24 px) are the grid the UI and
 text are laid out on. The **board** has its own square-tile pixel space (25 px) — cells
