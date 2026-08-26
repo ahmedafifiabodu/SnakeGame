@@ -1,44 +1,59 @@
-# Prerequisites
-*.d
+# Build output
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+Win32/
 
-# Compiled Object files
-*.slo
-*.lo
+# Visual Studio
+.vs/
+*.vcxproj.user
+*.VC.db
+*.VC.opendb
+*.aps
+
+# Compiled objects and intermediates
 *.o
 *.obj
-
-# Precompiled Headers
+*.d
 *.gch
 *.pch
-
-# Linker files
+*.ipch
 *.ilk
-
-# Debugger Files
+*.idb
 *.pdb
+*.tlog
+*.lastbuildstate
+*.log
 
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
+# Libraries
 *.lib
+*.a
+*.la
+*.lai
+*.so
+*.dll
+*.dylib
 
 # Executables
 *.exe
 *.out
 *.app
 
-# debug information files
-*.dwo
-
-.vs
+# Local Copilot guidance (kept out of the repo, as before)
 copilot-instructions.md
+
+# CMake
+build/
+out/
+CMakeUserPresets.json
+
+# Generated art (regenerate with tools/gen_art.ps1)
+assets/marketing/
+
+# Visual Studio regenerates a solution from its own cache if you ever open one.
+# This project is CMake-only -- open the FOLDER, not a solution.
+*.sln
+*.slnx
