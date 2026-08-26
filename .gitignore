@@ -45,8 +45,9 @@ Win32/
 # Local Copilot guidance (kept out of the repo, as before)
 copilot-instructions.md
 
-# CMake
+# CMake. `build-*` covers the release preset's own tree.
 build/
+build-*/
 out/
 CMakeUserPresets.json
 
