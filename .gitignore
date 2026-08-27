@@ -61,7 +61,8 @@ assets/marketing/
 
 # Local multiplayer identity and configuration, generated at first run.
 neoncoil_identity.txt
-netconfig.txt
+# netconfig.txt is committed: it carries the shipped relay address, so a player
+# who unzips the game can host online without configuring anything.
 
 # Relay-only server build tree
 build-relayonly/

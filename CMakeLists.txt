@@ -153,6 +153,15 @@ target_link_libraries(NeonCoil PRIVATE
 
 target_link_libraries(NeonCoil PRIVATE Threads::Threads)
 
+# The game reads netconfig.txt from its working directory, so it has to sit
+# beside the executable rather than at the top of the source tree. Copied after
+# every build so editing the relay address does not need a reconfigure.
+add_custom_command(TARGET NeonCoil POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/netconfig.txt"
+        "$<TARGET_FILE_DIR:NeonCoil>/netconfig.txt"
+    COMMENT "Placing netconfig.txt beside the executable")
+
 if(MSVC)
     target_compile_options(NeonCoil PRIVATE /W4 /permissive- /utf-8)
     target_compile_definitions(NeonCoil PRIVATE

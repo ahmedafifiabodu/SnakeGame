@@ -599,24 +599,26 @@ namespace neoncoil
     {
     }
 
-    int App::run()
+    void applyNetworkOptions(const LaunchOptions& options)
     {
-        // Networking configuration is resolved once, here, before any state can
-        // ask for it: file first, then command line. Nothing further down reads
-        // a port or a timeout from anywhere else.
+        // File first, then command line. Nothing further down reads a port or a
+        // timeout from anywhere else.
         net::NetConfig& netConfig = net::NetConfig::instance();
-        netConfig.loadFromFile(m_options.netConfigPath);
+        netConfig.loadFromFile(options.netConfigPath);
 
-        if (m_options.hostPort > 0)
-            netConfig.hostPort = static_cast<std::uint16_t>(m_options.hostPort);
-        if (m_options.discoveryPort > 0)
-            netConfig.discoveryPort = static_cast<std::uint16_t>(m_options.discoveryPort);
+        if (options.hostPort > 0)
+            netConfig.hostPort = static_cast<std::uint16_t>(options.hostPort);
+        if (options.discoveryPort > 0)
+            netConfig.discoveryPort = static_cast<std::uint16_t>(options.discoveryPort);
 
         // The identity provider is installed here and nowhere else. Swapping
         // this one line for an account-backed provider is the whole of adding
         // logins as far as the networking layer is concerned.
         net::setIdentityProvider(std::make_unique<net::LocalIdentityProvider>(netConfig.identityFile));
+    }
 
+    int App::run()
+    {
         Screen screen(ui::kScreenWidth, ui::kScreenHeight, L"NEON COIL");
         Input input;
 

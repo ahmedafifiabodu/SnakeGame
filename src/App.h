@@ -43,6 +43,14 @@ namespace neoncoil
     LaunchOptions parseArguments(int argc, char* argv[]);
     void printHelp();
 
+    // Resolves networking configuration and installs the identity provider.
+    //
+    // Called once from main(), before anything dispatches, because every entry
+    // point needs it -- not only the one that opens a window. Having this live
+    // inside App::run() meant --screenshot and --uidump rendered the multiplayer
+    // menu with no relay configured and reported "No relay in this build".
+    void applyNetworkOptions(const LaunchOptions& options);
+
     // Generates levels across a wide range of indices and asserts every
     // playability invariant. Returns a process exit code.
     int runGeneratorSelfTest(int levelsToTest, std::uint64_t seed);

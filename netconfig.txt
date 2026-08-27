@@ -1,0 +1,13 @@
+# NEON COIL networking configuration.
+#
+# This ships beside the executable. It is what tells the game where the relay
+# lives, and it is the only reason HOST ONLINE works: with no relay configured,
+# the game can still host and join on a local network, but nothing else.
+#
+# Players are not expected to touch this file. Every key is optional and falls
+# back to a built-in default; see netconfig.example.txt for the full list.
+
+# The relay. Both the host and its guests dial OUT to this, which is why nobody
+# has to forward a port on their router.
+relay_host = 35.222.57.3
+relay_port = 45700

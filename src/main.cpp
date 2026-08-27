@@ -21,6 +21,10 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+    // Before anything dispatches: every mode below can touch the network layer,
+    // including the offscreen ones that render the multiplayer screens.
+    neoncoil::applyNetworkOptions(options);
+
     // The self-test runs entirely on the console's normal stdout: it must not
     // touch the game screen, so it returns before App is ever constructed.
     if (options.selfTestLevels > 0)
