@@ -74,6 +74,12 @@ on opposite sides of the world would be using.
 
 ![Four players in one arena during an online match](docs/shot_netplay.png)
 
+![Four snakes sharing one arena, eating, dying and respawning](docs/demo_netplay.gif)
+
+<sup>A real four-player match, recorded by the build. One host and three guests over
+loopback sockets, steered by code rather than by hands — everything else, including
+the deaths and the respawn timers on the scoreboard, is the game.</sup>
+
 **Finding a game.** Host online, host on your own network, quick match, or type a code
 a friend read out to you.
 
@@ -88,6 +94,13 @@ a friend read out to you.
 Requires Visual Studio 2022 or later with the C++ desktop workload. CMake and Ninja
 ship with it. SFML 3.1.0 is fetched and built automatically on first configure, so the
 first build takes a few minutes and every one after that is incremental.
+
+> **CMake 3.28 or newer is required.** This project's own floor is lower, but SFML
+> 3.1.0 sets `cmake_minimum_required(3.28)`, and a configure on an older CMake fails
+> inside the fetched dependency with `CMake 3.28 or higher is required`. Visual
+> Studio 2022 is well past it; several Linux distributions are not — Debian 12 ships
+> 3.25, so a relay build there needs a newer CMake first. See
+> [Running the relay](#running-the-relay).
 
 **Visual Studio:** `File → Open → Folder…` → the repo root → pick the `debug` or
 `release` configuration from the toolbar → F5.
@@ -476,8 +489,8 @@ staged is that all four players happen to be on one machine.
 ```bash
 ./NeonCoil --screenshot lobby docs/shot_lobby.png --frames 90
 ./NeonCoil --screenshot netplay docs/shot_netplay.png --frames 620
-./NeonCoil --capture netplay frames --frames 900 --skip 180 --every 4
-python tools/make_gif.py frames docs/demo_netplay.gif --width 720 --fps 15
+./NeonCoil --capture netplay frames --frames 1400 --skip 430 --every 5
+python tools/make_gif.py frames docs/demo_netplay.gif --width 720 --fps 14
 ```
 
 To play it for real on one machine, start two or more copies from the build
@@ -522,12 +535,36 @@ cmake --build build --target neoncoil-relay
 
 **On a server, build it relay-only.** `-DNEONCOIL_RELAY_ONLY=ON` leaves SFML's
 Graphics, Window and Audio modules out entirely, so a bare box needs a compiler
-and CMake and nothing else — no X11, no OpenGL, no FreeType, no ALSA:
+and CMake and nothing else — no X11, no OpenGL, no FreeType, no ALSA.
+
+First check the CMake version, because most stable distributions ship one too old
+for SFML 3.1 and the failure happens deep inside the fetched dependency rather
+than anywhere obvious:
+
+```bash
+cmake --version   # needs 3.28+; Debian 12 ships 3.25
+```
+
+If it is older, install a current one over the top — no repository to add:
+
+```bash
+curl -fsSL https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz | sudo tar -xz --strip-components=1 -C /usr/local
+```
+
+Then:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DNEONCOIL_RELAY_ONLY=ON
 cmake --build build
 ./build/bin/neoncoil-relay --port 45700
+```
+
+On a 1 GB instance, add swap first and cap the parallelism, or the compile is
+killed part-way through with no useful message:
+
+```bash
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+cmake --build build -- -j2
 ```
 
 Or skip installing a toolchain on the server at all:

@@ -108,9 +108,26 @@ namespace neoncoil::tools
             return clear;
         }
 
-        // Head for the nearest food, but never into something lethal and never
-        // down a corridor that ends. Simple on purpose: this exists to make a
-        // capture look alive, not to play well.
+        // A tile another snake's head could step onto next. Not fatal, but four
+        // snakes all converging on one fruit is exactly how a capture ends up
+        // being four corpses, so it is worth a heavy penalty.
+        bool contested(const MatchSnapshot& snapshot, const SnakeSnapshot& me, Vec2 tile)
+        {
+            for (const SnakeSnapshot& snake : snapshot.snakes)
+            {
+                if (!snake.alive || snake.slot == me.slot || snake.body.empty())
+                    continue;
+
+                if (manhattan(snake.body.front(), tile) <= 1)
+                    return true;
+            }
+
+            return false;
+        }
+
+        // Head for a fruit, but never into something lethal and never down a
+        // corridor that ends. Simple on purpose: this exists to make a capture
+        // look alive, not to play well.
         std::optional<Direction> steer(const Level& arena, const MatchSnapshot& snapshot,
             const SnakeSnapshot& me, Rng& rng)
         {
@@ -119,16 +136,25 @@ namespace neoncoil::tools
 
             const Vec2 head = me.body.front();
 
-            const Vec2* target = nullptr;
-            int bestDistance = 0;
+            // Each snake prefers a different fruit, offset by its seat. All four
+            // chasing the nearest one put them on the same tile at the same
+            // moment, which is a collision rather than a game.
+            std::vector<const FoodSnapshot*> byDistance;
+            byDistance.reserve(snapshot.food.size());
             for (const FoodSnapshot& food : snapshot.food)
-            {
-                const int distance = manhattan(head, food.position);
-                if (target == nullptr || distance < bestDistance)
+                byDistance.push_back(&food);
+
+            std::sort(byDistance.begin(), byDistance.end(),
+                [head](const FoodSnapshot* a, const FoodSnapshot* b)
                 {
-                    target = &food.position;
-                    bestDistance = distance;
-                }
+                    return manhattan(head, a->position) < manhattan(head, b->position);
+                });
+
+            const Vec2* target = nullptr;
+            if (!byDistance.empty())
+            {
+                const std::size_t pick = static_cast<std::size_t>(me.slot) % byDistance.size();
+                target = &byDistance[pick]->position;
             }
 
             constexpr std::array<Direction, 4> kAll = {
@@ -154,6 +180,9 @@ namespace neoncoil::tools
 
                 if (target != nullptr)
                     score += (arena.width() + arena.height()) - manhattan(next, *target);
+
+                if (contested(snapshot, me, next))
+                    score -= 60;
 
                 score += rng.range(0, 3);
 
@@ -230,6 +259,7 @@ namespace neoncoil::tools
         impl.config.hostPort = kDemoPort;
         impl.config.advertiseOnLan = false;      // a capture should not beacon
         impl.config.rules.countdownSeconds = 0.6f;
+        impl.config.rules.respawnSeconds = 1.0f;   // a capture should not be all corpses
         impl.rng.reseed(0xC0FFEEull);
 
         impl.lastHeads.assign(1, Vec2{ -1, -1 });   // slot zero is the host
@@ -355,8 +385,16 @@ namespace neoncoil::tools
 
             const MatchSnapshot& snapshot = session.snapshot();
             const SnakeSnapshot* me = snapshot.find(session.localSlot());
+
             if (me == nullptr || !me->alive || me->body.empty())
+            {
+                // Forget where the head was, so the first frame after a respawn
+                // always re-steers instead of matching a stale position and
+                // letting the new snake run straight on into whatever is ahead.
+                if (index < impl.lastHeads.size())
+                    impl.lastHeads[index] = Vec2{ -1, -1 };
                 return;
+            }
 
             const Vec2 head = me->body.front();
             if (index < impl.lastHeads.size() && impl.lastHeads[index] == head)
