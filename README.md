@@ -551,6 +551,11 @@ If it is older, install a current one over the top — no repository to add:
 curl -fsSL https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz | sudo tar -xz --strip-components=1 -C /usr/local
 ```
 
+Nothing else needs installing. SFML's network module wants mbedTLS and libssh2,
+and this project builds both from pinned source on every platform rather than
+looking for system copies — `apt install libmbedtls-dev` would be the wrong fix
+anyway, since Debian 12 ships mbedTLS 2.28 and SFML 3.1 wants 3.6.
+
 Then:
 
 ```bash

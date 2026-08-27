@@ -35,6 +35,21 @@ set(SFML_BUILD_EXAMPLES     OFF CACHE BOOL "" FORCE)
 set(SFML_BUILD_DOC          OFF CACHE BOOL "" FORCE)
 set(SFML_USE_STATIC_STD_LIBS OFF CACHE BOOL "" FORCE)
 
+# Fetch SFML's own dependencies rather than hunting for system ones.
+#
+# SFML defaults this OFF on Windows and ON everywhere else, which means the
+# Network module calls find_package(MbedTLS REQUIRED) on Linux and fails with
+# "Could NOT find MbedTLS" on any box that has not been prepared. Installing the
+# distribution package is not a fix either: SFML 3.1 fetches mbedTLS 3.6.5, while
+# Debian 12 ships 2.28, and the two are not API compatible -- so the configure
+# would succeed and the compile would fail instead.
+#
+# Forcing it off makes every platform build the same pinned dependencies from
+# source, which is the whole reason this project vendors SFML through
+# FetchContent in the first place. It costs build time on a fresh machine and
+# removes an entire class of "works on mine".
+set(SFML_USE_SYSTEM_DEPS    OFF CACHE BOOL "" FORCE)
+
 if(NEONCOIL_RELAY_ONLY)
     set(SFML_BUILD_GRAPHICS OFF CACHE BOOL "" FORCE)
     set(SFML_BUILD_WINDOW   OFF CACHE BOOL "" FORCE)
