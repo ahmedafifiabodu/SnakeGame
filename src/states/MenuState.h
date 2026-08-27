@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GameState.h"
+#include "../ui/Hit.h"
 
 namespace neoncoil
 {
@@ -19,12 +20,24 @@ namespace neoncoil
             Name,
             Colour,
             Type,
-            Start,
+            Start,        // offline, no connection and no account needed
+            Multiplayer,
             Count
+        };
+
+        // Ids above the Field range, so one map covers both "focus this field"
+        // and the controls that act directly.
+        enum Hit : int
+        {
+            HitColourSwatch = 100,   // + swatch index
+            HitTypePrev = 200,
+            HitTypeNext = 201
         };
 
         void handleNameEntry(AppContext& context);
         void adjust(AppContext& context, int delta);
+        Transition handleMouse(AppContext& context);
+        Transition confirmField(AppContext& context);
 
         void renderTitle(AppContext& context) const;
         void renderConfigPanel(AppContext& context) const;
@@ -34,5 +47,8 @@ namespace neoncoil
         Field m_field{ Field::Name };
         float m_elapsed{ 0.0f };
         bool m_nameTouched{ false };
+
+        // Filled while rendering, read on the next update.
+        mutable ui::HitMap m_hits;
     };
 }

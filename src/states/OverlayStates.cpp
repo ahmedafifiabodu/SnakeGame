@@ -32,7 +32,8 @@ namespace neoncoil
         }
 
         void drawMenuOptions(Screen& screen, const PanelRect& panel, int firstRow,
-            const std::vector<std::wstring>& options, int selection, Color accent)
+            const std::vector<std::wstring>& options, int selection, Color accent,
+            ui::HitMap* hits = nullptr)
         {
             // A fixed, centred button width. Stretching the highlight across the
             // whole panel made the selected row read as a divider rather than a
@@ -50,6 +51,9 @@ namespace neoncoil
 
                 screen.fillRect(buttonX, y, kButtonWidth, 1, glyph::Space, foreground, background);
                 screen.textCenteredIn(buttonX, kButtonWidth, y, options[i], foreground, background);
+
+                if (hits != nullptr)
+                    hits->add(static_cast<int>(i), buttonX, y, kButtonWidth, 1);
 
                 if (isSelected)
                 {
@@ -79,6 +83,24 @@ namespace neoncoil
             screen.fillRect(0, ui::kFooterY, screen.width(), 1, glyph::Space, Color::Silver, Color::Black);
             screen.textCentered(ui::kFooterY, hint, Color::Slate, Color::Black);
         }
+
+        // Hover moves the highlight, a click chooses. Returns the option that
+        // was clicked, or -1. Shared by all three overlays so they cannot end up
+        // behaving differently under the mouse.
+        int pickWithMouse(const Input& input, const ui::HitMap& hits, int& selection)
+        {
+            if (input.mouseMoved())
+            {
+                if (const int hovered = hits.hovered(input); hovered != ui::HitMap::kNone)
+                    selection = hovered;
+            }
+
+            const int clicked = hits.clicked(input);
+            if (clicked != ui::HitMap::kNone)
+                selection = clicked;
+
+            return clicked;
+        }
     }
 
     // ---------------------------------------------------------------- pause --
@@ -105,7 +127,9 @@ namespace neoncoil
         if (input.pressed(Action::Back) || input.pressed(Action::Pause))
             return Transition::pop();
 
-        if (input.pressed(Action::Confirm))
+        const bool mouseChose = pickWithMouse(input, m_hits, m_selection) != ui::HitMap::kNone;
+
+        if (input.pressed(Action::Confirm) || mouseChose)
         {
             switch (m_selection)
             {
@@ -131,7 +155,7 @@ namespace neoncoil
             context.profile.colour, Color::Black);
 
         drawMenuOptions(screen, panel, panel.y + 12,
-            { L"RESUME", L"BACK TO MENU", L"QUIT GAME" }, m_selection, Color::Aqua);
+            { L"RESUME", L"BACK TO MENU", L"QUIT GAME" }, m_selection, Color::Aqua, &m_hits);
 
         screen.textCentered(panel.y + panel.h - 2, L"ENTER SELECT    ESC RESUME", Color::Slate, Color::Transparent);
         replaceFooter(screen, L"Game paused");
@@ -160,8 +184,13 @@ namespace neoncoil
         if (m_elapsed < 0.45f)
             return Transition::none();
 
-        if (context.input.pressed(Action::Confirm) || context.input.pressed(Action::Ability))
+        // A click anywhere continues, the same as Enter or Space: this panel has
+        // one outcome, so making the player find a button would be busywork.
+        if (context.input.pressed(Action::Confirm) || context.input.pressed(Action::Ability) ||
+            context.input.mouseClicked())
+        {
             return Transition::pop();
+        }
 
         return Transition::none();
     }
@@ -226,7 +255,9 @@ namespace neoncoil
         if (input.pressed(Action::Back))
             return Transition::reset(std::make_unique<MenuState>());
 
-        if (input.pressed(Action::Confirm))
+        const bool mouseChose = pickWithMouse(input, m_hits, m_selection) != ui::HitMap::kNone;
+
+        if (input.pressed(Action::Confirm) || mouseChose)
         {
             switch (m_selection)
             {
@@ -263,7 +294,7 @@ namespace neoncoil
         statLine(screen, x, y++, L"RUN SEED", std::to_wstring(m_summary.runSeed), Color::Slate);
 
         drawMenuOptions(screen, panel, panel.y + 21,
-            { L"RETRY", L"MAIN MENU", L"QUIT" }, m_selection, Color::Red);
+            { L"RETRY", L"MAIN MENU", L"QUIT" }, m_selection, Color::Red, &m_hits);
 
         screen.textCentered(panel.y + panel.h - 3, L"R RETRY    ESC MENU", Color::Slate, Color::Transparent);
         replaceFooter(screen, L"UP / DOWN to choose    ENTER to confirm");

@@ -145,6 +145,17 @@ namespace neoncoil
                 return;
             }
 
+            // Put the pointer on the virtual canvas before the event is handed
+            // on. mapPixelToCoords runs against the letterboxed view, so this is
+            // correct at any window size, on any monitor and in fullscreen --
+            // and it is the only place in the game that has to know that.
+            if (const auto* moved = event->getIf<sf::Event::MouseMoved>())
+                setMouseFromPixel(input, moved->position);
+            else if (const auto* pressed = event->getIf<sf::Event::MouseButtonPressed>())
+                setMouseFromPixel(input, pressed->position);
+            else if (const auto* released = event->getIf<sf::Event::MouseButtonReleased>())
+                setMouseFromPixel(input, released->position);
+
             input.handleEvent(*event);
         }
 
@@ -433,6 +444,24 @@ namespace neoncoil
             additive.blendMode = sf::BlendAdd;
             target.draw(m_overlayGlowBatch, additive);
         }
+    }
+
+    void Screen::setMouseFromPixel(Input& input, sf::Vector2i pixel)
+    {
+        if (!m_window)
+            return;
+
+        const sf::Vector2f canvas = m_window->mapPixelToCoords(pixel);
+
+        // Outside the canvas the cell is deliberately out of range rather than
+        // clamped, so a click in the letterbox bars hits nothing instead of
+        // hitting the nearest edge control.
+        const Vec2 cell{
+            static_cast<int>(std::floor(canvas.x / static_cast<float>(kCellWidth))),
+            static_cast<int>(std::floor(canvas.y / static_cast<float>(kCellHeight)))
+        };
+
+        input.setMousePosition(canvas.x, canvas.y, cell);
     }
 
     void Screen::applyLetterbox()

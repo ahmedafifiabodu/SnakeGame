@@ -1,6 +1,7 @@
 #include "Input.h"
 
 #include <SFML/Window/Event.hpp>
+#include <SFML/Window/Mouse.hpp>
 
 namespace neoncoil
 {
@@ -51,6 +52,23 @@ namespace neoncoil
         m_typedText.clear();
         m_backspaceCount = 0;
         m_anyKeyPressed = false;
+
+        // Edges only. Where the pointer is survives the frame boundary, because
+        // a mouse that has not moved is still hovering over something.
+        m_mouseClicked = false;
+        m_mouseRightClicked = false;
+        m_mouseMoved = false;
+    }
+
+    void Input::setMousePosition(float canvasX, float canvasY, Vec2 cell)
+    {
+        if (canvasX != m_mouseX || canvasY != m_mouseY)
+            m_mouseMoved = true;
+
+        m_mouseX = canvasX;
+        m_mouseY = canvasY;
+        m_mouseCell = cell;
+        m_mouseInside = true;
     }
 
     void Input::handleEvent(const sf::Event& event)
@@ -74,7 +92,24 @@ namespace neoncoil
             // Backspace and Enter also arrive here; only real characters are kept.
             if (isPrintableAscii(typed->unicode))
                 m_typedText.push_back(static_cast<wchar_t>(typed->unicode));
+            return;
         }
+
+        if (const auto* button = event.getIf<sf::Event::MouseButtonPressed>())
+        {
+            // Screen has already put the pointer on the canvas for this event,
+            // so a click is only the button edge.
+            if (button->button == sf::Mouse::Button::Left)
+                m_mouseClicked = true;
+            else if (button->button == sf::Mouse::Button::Right)
+                m_mouseRightClicked = true;
+
+            m_anyKeyPressed = true;   // "press any key" prompts mean the mouse too
+            return;
+        }
+
+        if (event.is<sf::Event::MouseLeft>())
+            m_mouseInside = false;
     }
 
     void Input::flush()

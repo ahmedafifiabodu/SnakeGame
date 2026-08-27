@@ -58,3 +58,10 @@ assets/marketing/
 # This project is CMake-only -- open the FOLDER, not a solution.
 *.sln
 *.slnx
+
+# Local multiplayer identity and configuration, generated at first run.
+neoncoil_identity.txt
+netconfig.txt
+
+# Relay-only server build tree
+build-relayonly/

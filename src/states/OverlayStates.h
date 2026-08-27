@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GameState.h"
+#include "../ui/Hit.h"
 
 #include <string>
 
@@ -18,6 +19,7 @@ namespace neoncoil
 
     private:
         int m_selection{ 0 };
+        ui::HitMap m_hits;
         float m_elapsed{ 0.0f };
     };
 
@@ -52,6 +54,7 @@ namespace neoncoil
     private:
         RunSummary m_summary;
         int m_selection{ 0 };
+        ui::HitMap m_hits;
         float m_elapsed{ 0.0f };
     };
 }

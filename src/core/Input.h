@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Vec2.h"
+
 #include <array>
 #include <string>
 
@@ -51,10 +53,41 @@ namespace neoncoil
         const std::wstring& typedText() const { return m_typedText; }
         int backspaceCount() const { return m_backspaceCount; }
 
+        // --- mouse -----------------------------------------------------------
+        // Positions arrive already mapped onto the virtual canvas: Screen owns
+        // the letterbox and the cell size, so nothing above here has to know the
+        // window was resized, moved to another monitor or made fullscreen.
+        //
+        // Screen calls this; states never do.
+        void setMousePosition(float canvasX, float canvasY, Vec2 cell);
+        void setMouseInside(bool inside) { m_mouseInside = inside; }
+
+        Vec2 mouseCell() const { return m_mouseCell; }
+        float mouseX() const { return m_mouseX; }
+        float mouseY() const { return m_mouseY; }
+
+        bool mouseInside() const { return m_mouseInside; }
+        bool mouseClicked() const { return m_mouseClicked; }
+        bool mouseRightClicked() const { return m_mouseRightClicked; }
+
+        // True only on frames the pointer actually moved. Hover-to-focus is
+        // gated on this so a resting mouse cannot fight the keyboard for which
+        // field is selected.
+        bool mouseMoved() const { return m_mouseMoved; }
+
     private:
         std::array<bool, static_cast<std::size_t>(Action::Count)> m_actionPressed{};
         std::wstring m_typedText;
         int m_backspaceCount{ 0 };
         bool m_anyKeyPressed{ false };
+
+        // Position persists across frames; the edges do not.
+        float m_mouseX{ -1.0f };
+        float m_mouseY{ -1.0f };
+        Vec2 m_mouseCell{ -1, -1 };
+        bool m_mouseInside{ false };
+        bool m_mouseClicked{ false };
+        bool m_mouseRightClicked{ false };
+        bool m_mouseMoved{ false };
     };
 }

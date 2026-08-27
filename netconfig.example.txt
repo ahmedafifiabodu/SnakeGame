@@ -1,0 +1,94 @@
+# NEON COIL networking configuration.
+#
+# Copy this next to the executable as netconfig.txt to change anything below.
+# The game runs correctly with this file absent -- every key here is optional
+# and falls back to the built-in default shown.
+#
+# Command line wins over this file: --port, --discovery-port, --netconfig.
+
+# --- transport ---------------------------------------------------------------
+
+# TCP port the host listens on. Guests outside your network reach a host by
+# <address>:<this>, so this is the port to forward on a router.
+host_port = 45711
+
+# UDP port used to find sessions on the local network. Only the host binds it.
+discovery_port = 45712
+
+# Seats in a session, 2 to 4.
+max_players = 4
+
+# How often the host sends the world to everyone, in snapshots per second.
+# The game only steps about eight times a second, so past ~20 this buys
+# nothing but bandwidth.
+snapshot_hz = 20
+
+# Seconds to wait for a connection before giving up.
+connect_timeout = 8
+
+# Seconds of silence before a peer is considered gone.
+peer_timeout = 12
+
+# --- relay -------------------------------------------------------------------
+#
+# THIS is what makes HOST ONLINE work. Set relay_host to wherever you are
+# running neoncoil-relay and ship this file beside the game: from then on both
+# the host and its guests dial OUT to it, so no player ever forwards a port,
+# and it works behind carrier-grade NAT and on mobile hotspots.
+#
+# Leave relay_host empty and the game is local-network only: HOST ONLINE is
+# shown greyed out, and HOST ON THIS NETWORK still works with no server at all.
+relay_host =
+relay_port = 45700
+
+# Send LAN games through the relay too. Off by default -- two players in the
+# same room should not take a detour through a datacentre.
+always_use_relay = 0
+
+# --- discovery ---------------------------------------------------------------
+
+# Seconds a discovered session stays listed after its last reply.
+discovery_ttl = 4
+
+# Seconds QUICK MATCH spends looking before it hosts instead.
+quick_match_search = 2.5
+
+# Set to 0 to make a session joinable by address only.
+advertise_on_lan = 1
+
+# Where the local player identity is kept. Point separate copies of the game at
+# separate files if you want them to look like separate players.
+identity_file = neoncoil_identity.txt
+
+# --- match rules -------------------------------------------------------------
+# Host-authoritative: whatever the host has here is what every guest plays,
+# and it travels to them at match start. Guests do not need this file.
+
+# Match length in seconds.
+match_duration = 180
+
+# Seconds of held breath before the snakes move.
+match_countdown = 3
+
+# End the match early when somebody reaches this score. 0 leaves it on the clock.
+match_score_limit = 0
+
+# Seconds a dead player waits before respawning.
+match_respawn = 3
+
+# Normal fruit kept on the board at once.
+match_food_count = 3
+
+# Points for taking somebody else out, and points lost for dying.
+match_kill_bonus = 50
+match_death_penalty = 25
+
+# Base seconds per move, before each snake type's own speed is applied.
+match_tick_seconds = 0.14
+
+# Which band of the level generator the arena is drawn from. Higher is denser.
+match_arena_level = 4
+
+# Longest a snake may get. Caps the board one player can own, and bounds the
+# size of a snapshot.
+match_max_length = 64

@@ -16,6 +16,7 @@ namespace neoncoil
         std::wstring playerName;
         int snakeTypeIndex{ -1 };
         int selfTestLevels{ 0 };  // > 0 runs the generator self-test and exits
+        bool netSelfTest{ false };// runs the networking self-test and exits
         int dumpLevel{ 0 };       // > 0 prints that level as ASCII and exits
         int dumpFrames{ 200 };    // frames to simulate before an offscreen dump
         std::string uiDump;       // non-empty renders a screen offscreen and exits
@@ -26,6 +27,14 @@ namespace neoncoil
         int captureEvery{ 2 };    // save one frame in n while capturing
         int captureSkip{ 0 };     // frames to simulate before the first one is saved
         bool demo{ false };       // autopilot drives the play screen while capturing
+
+        // Networking. All optional: with none of them set, the game reads
+        // netconfig.txt if it is there and otherwise uses built-in defaults, so
+        // multiplayer needs no configuration to work on a local network.
+        std::string netConfigPath{ "netconfig.txt" };
+        int hostPort{ 0 };        // > 0 overrides the configured listen port
+        int discoveryPort{ 0 };   // > 0 overrides the configured discovery port
+
         bool showHelp{ false };
         bool invalid{ false };
         std::wstring error;

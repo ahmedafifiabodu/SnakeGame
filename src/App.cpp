@@ -5,14 +5,22 @@
 #include "core/Screen.h"
 #include "game/LevelGenerator.h"
 #include "game/Progression.h"
+#include "net/HostSession.h"
+#include "net/Identity.h"
+#include "net/NetConfig.h"
 #include "states/GameState.h"
 #include "core/Glyphs.h"
+#include "states/LobbyState.h"
 #include "states/MenuState.h"
+#include "states/MultiplayerMenuState.h"
+#include "states/NetPlayState.h"
 #include "states/OverlayStates.h"
 #include "states/PlayState.h"
 #include "tools/Autoplay.h"
+#include "tools/NetDemo.h"
 #include "ui/Draw.h"
 #include "ui/Layout.h"
+#include "ui/Palette.h"
 
 #include <SFML/Window/Event.hpp>
 #include <SFML/Window/Keyboard.hpp>
@@ -97,7 +105,8 @@ namespace neoncoil
         // ASCII dump and the PNG sequence all run through here so they cannot
         // drift apart.
         void driveFrames(StateMachine& machine, AppContext& context, PlayState* play,
-            const std::string& which, const LaunchOptions& options, const std::function<void(int)>& afterFrame)
+            const std::string& which, const LaunchOptions& options, const std::function<void(int)>& afterFrame,
+            tools::NetDemo* netDemo = nullptr)
         {
             constexpr float kStep = 1.0f / 60.0f;
             tools::Autoplay autoplay;
@@ -115,6 +124,12 @@ namespace neoncoil
                     const bool pause = (which == "pause") && (frame == pauseAtFrame);
                     pressForDemo(context.input, autoplay, machine, *play, kStep, pause);
                 }
+
+                // The demo guests are driven before the screen updates, so the
+                // host has their input in hand for the same frame it simulates.
+                // The state on top pumps the host session itself.
+                if (netDemo != nullptr)
+                    netDemo->tick(kStep);
 
                 machine.update(context, kStep);
 
@@ -137,7 +152,8 @@ namespace neoncoil
             "  --snake <n>       Pre-select a snake type (1-" << snakeTypeCount() << ").\n"
             "  --selftest <n>    Generate and validate <n> levels, print a report, exit.\n"
             "  --dump <n>        Print level <n> as ASCII and exit.\n"
-            "  --uidump <screen> Render menu|play|pause|clear|over offscreen as ASCII.\n"
+            "  --uidump <screen> Render a screen offscreen as ASCII. One of menu, play,\n"
+            "                    pause, clear, over, netmenu, lobby, netplay.\n"
             "  --screenshot <screen> <file.png>\n"
             "                    Render a screen offscreen and write it to a PNG.\n"
             "  --capture <screen> <dir>\n"
@@ -149,6 +165,14 @@ namespace neoncoil
             "                    capture can start deep into a run.\n"
             "  --demo            Let the autopilot play while capturing, so the shot shows a\n"
             "                    real run rather than an idle snake.\n"
+            "\n"
+            " Multiplayer (all optional -- the defaults work on a local network):\n"
+            "  --nettest         Run a host and three clients over loopback, play a match out,\n"
+            "                    print a report and exit. No window is opened.\n"
+            "  --netconfig <file> Read networking settings from <file> (default netconfig.txt).\n"
+            "  --port <n>        Port to host on, overriding the config file.\n"
+            "  --discovery-port <n>\n"
+            "                    Port used to find sessions on the local network.\n"
             "  --help            Show this message.\n"
             "\n"
             "With no arguments the game starts at the main menu.\n";
@@ -213,6 +237,22 @@ namespace neoncoil
             else if (matches(argument, "--demo"))
             {
                 options.demo = true;
+            }
+            else if (matches(argument, "--nettest"))
+            {
+                options.netSelfTest = true;
+            }
+            else if (matches(argument, "--netconfig") && hasValue)
+            {
+                options.netConfigPath = argv[++i];
+            }
+            else if (matches(argument, "--port") && hasValue)
+            {
+                options.hostPort = std::atoi(argv[++i]);
+            }
+            else if (matches(argument, "--discovery-port") && hasValue)
+            {
+                options.discoveryPort = std::atoi(argv[++i]);
             }
             else if (matches(argument, "--selftest"))
             {
@@ -409,7 +449,8 @@ namespace neoncoil
     // can read the board it is steering on. It stays null for "menu", which has
     // no run behind it.
     bool buildScreen(StateMachine& machine, AppContext& context, const std::string& which,
-        const LaunchOptions& options, PlayState** playOut = nullptr)
+        const LaunchOptions& options, PlayState** playOut = nullptr,
+        tools::NetDemo* netDemo = nullptr)
     {
         const std::uint64_t seed = options.seed;
 
@@ -426,6 +467,72 @@ namespace neoncoil
         if (which == "menu")
         {
             machine.apply(Transition::reset(std::make_unique<MenuState>()), context);
+            return true;
+        }
+
+        if (which == "netmenu")
+        {
+            machine.apply(Transition::reset(std::make_unique<MultiplayerMenuState>()), context);
+            return true;
+        }
+
+        if ((which == "lobby" || which == "netplay") && netDemo != nullptr)
+        {
+            // A four-seat session, over real loopback sockets, so the capture
+            // shows the screen as a player would actually meet it rather than a
+            // lobby with one occupant and three empty chairs.
+            std::wstring demoError;
+            if (!netDemo->start(kMaxMatchPlayers - 1, which == "netplay", demoError))
+            {
+                std::wcerr << L"could not open a demo session: " << demoError << L"\n";
+                return false;
+            }
+
+            if (which == "netplay")
+                netDemo->startMatch();
+
+            net::HostSession* const live = netDemo->host()
+                ? static_cast<net::HostSession*>(netDemo->host())
+                : nullptr;
+
+            machine.apply(Transition::reset(std::make_unique<LobbyState>(netDemo->takeHost())), context);
+
+            if (which == "netplay" && live != nullptr)
+                machine.apply(Transition::push(std::make_unique<NetPlayState>(live)), context);
+
+            return true;
+        }
+
+        if (which == "lobby" || which == "netplay")
+        {
+            // A real session on a real socket, not a mock-up: the lobby screen
+            // is driven by whatever the host session actually reports, so a
+            // faked one would not be checking the thing that can break. Guests
+            // are not simulated here -- a populated lobby is covered by
+            // --nettest and by running two copies of the game.
+            auto session = std::make_unique<net::HostSession>(net::NetConfig::instance(),
+                net::identityProvider());
+
+            std::wstring error;
+            if (!session->open(context.profile.name,
+                static_cast<std::uint8_t>(ui::playerColourIndex(context.profile.colour)),
+                static_cast<std::uint8_t>(context.profile.snakeTypeIndex), net::HostSession::Reach::Direct, error))
+            {
+                std::wcerr << L"could not open a session to dump: " << error << L"\n";
+                return false;
+            }
+
+            // The lobby owns the session for the rest of its life; the match
+            // screen only borrows it, exactly as it does in the running game.
+            net::HostSession* const live = session.get();
+            machine.apply(Transition::reset(std::make_unique<LobbyState>(std::move(session))), context);
+
+            if (which == "netplay")
+            {
+                live->requestStartMatch();
+                machine.apply(Transition::push(std::make_unique<NetPlayState>(live)), context);
+            }
+
             return true;
         }
 
@@ -449,7 +556,8 @@ namespace neoncoil
             machine.apply(Transition::push(std::make_unique<GameOverState>(summary)), context);
         else if (which != "play")
         {
-            std::cerr << "unknown screen '" << which << "' (menu|play|pause|clear|over)\n";
+            std::cerr << "unknown screen '" << which
+                      << "' (menu|play|pause|clear|over|netmenu|lobby|netplay)\n";
             return false;
         }
 
@@ -472,11 +580,12 @@ namespace neoncoil
 
         StateMachine machine;
         PlayState* play = nullptr;
-        if (!buildScreen(machine, context, which, options, &play))
+        tools::NetDemo netDemo;
+        if (!buildScreen(machine, context, which, options, &play, &netDemo))
             return 2;
 
         // A few frames so animations, timers and the level intro settle.
-        driveFrames(machine, context, play, which, options, nullptr);
+        driveFrames(machine, context, play, which, options, nullptr, &netDemo);
 
         machine.render(context);
 
@@ -492,6 +601,22 @@ namespace neoncoil
 
     int App::run()
     {
+        // Networking configuration is resolved once, here, before any state can
+        // ask for it: file first, then command line. Nothing further down reads
+        // a port or a timeout from anywhere else.
+        net::NetConfig& netConfig = net::NetConfig::instance();
+        netConfig.loadFromFile(m_options.netConfigPath);
+
+        if (m_options.hostPort > 0)
+            netConfig.hostPort = static_cast<std::uint16_t>(m_options.hostPort);
+        if (m_options.discoveryPort > 0)
+            netConfig.discoveryPort = static_cast<std::uint16_t>(m_options.discoveryPort);
+
+        // The identity provider is installed here and nowhere else. Swapping
+        // this one line for an account-backed provider is the whole of adding
+        // logins as far as the networking layer is concerned.
+        net::setIdentityProvider(std::make_unique<net::LocalIdentityProvider>(netConfig.identityFile));
+
         Screen screen(ui::kScreenWidth, ui::kScreenHeight, L"NEON COIL");
         Input input;
 
@@ -570,10 +695,11 @@ namespace neoncoil
 
         StateMachine machine;
         PlayState* play = nullptr;
-        if (!buildScreen(machine, context, which, options, &play))
+        tools::NetDemo netDemo;
+        if (!buildScreen(machine, context, which, options, &play, &netDemo))
             return 2;
 
-        driveFrames(machine, context, play, which, options, nullptr);
+        driveFrames(machine, context, play, which, options, nullptr, &netDemo);
 
         machine.render(context);
 
@@ -614,7 +740,8 @@ namespace neoncoil
 
         StateMachine machine;
         PlayState* play = nullptr;
-        if (!buildScreen(machine, context, which, options, &play))
+        tools::NetDemo netDemo;
+        if (!buildScreen(machine, context, which, options, &play, &netDemo))
             return 2;
 
         int written = 0;

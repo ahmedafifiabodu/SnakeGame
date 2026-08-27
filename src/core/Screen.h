@@ -121,6 +121,9 @@ namespace neoncoil
         void setIcon(const sf::Texture& texture);
 
     private:
+        // Maps a window pixel onto the virtual canvas and hands it to Input.
+        void setMouseFromPixel(Input& input, sf::Vector2i pixel);
+
         void buildTargets(const std::wstring& title, bool windowed);
         void appendQuad(sf::VertexArray& batch, float x, float y, float w, float h,
             const sf::FloatRect& texRect, Color colour);

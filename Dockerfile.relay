@@ -1,0 +1,46 @@
+# NEON COIL relay.
+#
+# Optional -- the relay is a single static-ish binary and runs fine straight from
+# a build on the host. This exists so you can deploy it without installing a
+# toolchain on the server, and so a rebuild is one command.
+#
+#   docker build -f Dockerfile.relay -t neoncoil-relay .
+#   docker run -d --restart=always -p 45700:45700 --name relay neoncoil-relay
+#
+# Nothing about the relay is game-specific, so this image does NOT need
+# rebuilding when the game changes.
+
+# ------------------------------------------------------------------- build
+FROM debian:bookworm-slim AS build
+
+# Only a compiler, CMake and git. NEONCOIL_RELAY_ONLY keeps SFML's Graphics,
+# Window and Audio modules out of the build, so none of X11, OpenGL, FreeType
+# or ALSA is needed here.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake ninja-build git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY CMakeLists.txt ./
+COPY src ./src
+
+RUN cmake -S . -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DNEONCOIL_RELAY_ONLY=ON \
+    && cmake --build build
+
+# ------------------------------------------------------------------- run
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libstdc++6 ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --no-create-home neoncoil
+
+COPY --from=build /src/build/bin/neoncoil-relay /usr/local/bin/neoncoil-relay
+
+USER neoncoil
+EXPOSE 45700/tcp
+
+ENTRYPOINT ["/usr/local/bin/neoncoil-relay"]
+CMD ["--port", "45700", "--quiet"]

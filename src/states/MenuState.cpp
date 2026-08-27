@@ -1,10 +1,12 @@
 #include "MenuState.h"
 
+#include "MultiplayerMenuState.h"
 #include "PlayState.h"
 #include "../core/Glyphs.h"
 #include "../ui/Art.h"
 #include "../ui/Draw.h"
 #include "../ui/Layout.h"
+#include "../ui/Palette.h"
 
 #include <algorithm>
 #include <array>
@@ -15,22 +17,10 @@ namespace neoncoil
 {
     namespace
     {
-        struct ColourOption
-        {
-            Color colour;
-            const wchar_t* name;
-        };
-
-        constexpr std::array<ColourOption, 8> kColourOptions = { {
-            { Color::Green,   L"EMERALD" },
-            { Color::Aqua,    L"MINT" },
-            { Color::Cyan,    L"AZURE" },
-            { Color::Blue,    L"COBALT" },
-            { Color::Magenta, L"ORCHID" },
-            { Color::Coral,   L"CORAL" },
-            { Color::Gold,    L"GOLD" },
-            { Color::White,   L"BONE" },
-        } };
+        // The palette moved to ui/Palette.h when multiplayer arrived: the lobby
+        // has to draw other players' colours, and the wire protocol carries the
+        // index rather than an RGBA triple, so there can only be one table.
+        constexpr const std::array<ui::ColourOption, 8>& kColourOptions = ui::kPlayerColours;
 
         constexpr int kMaxNameLength = 12;
 
@@ -63,10 +53,7 @@ namespace neoncoil
 
         int colourIndexOf(Color colour)
         {
-            for (std::size_t i = 0; i < kColourOptions.size(); ++i)
-                if (kColourOptions[i].colour == colour)
-                    return static_cast<int>(i);
-            return 0;
+            return ui::playerColourIndex(colour);
         }
 
         int wrapIndex(int value, int count)
@@ -168,16 +155,73 @@ namespace neoncoil
             return Transition::quit();
 
         if (input.pressed(Action::Confirm))
+            return confirmField(context);
+
+        return handleMouse(context);
+    }
+
+    Transition MenuState::confirmField(AppContext& context)
+    {
+        const int fieldCount = static_cast<int>(Field::Count);
+
+        if (m_field == Field::Start || m_field == Field::Multiplayer)
         {
+            if (context.profile.name.empty())
+                context.profile.name = L"PLAYER";
+
+            // Single player replaces the menu -- there is nothing to come back
+            // to. Multiplayer is pushed, so leaving a session returns here with
+            // the player's name and snake still set.
             if (m_field == Field::Start)
-            {
-                if (context.profile.name.empty())
-                    context.profile.name = L"PLAYER";
-
                 return Transition::reset(std::make_unique<PlayState>(context.nextRunSeed()));
-            }
 
-            m_field = static_cast<Field>(wrapIndex(static_cast<int>(m_field) + 1, fieldCount));
+            return Transition::push(std::make_unique<MultiplayerMenuState>());
+        }
+
+        m_field = static_cast<Field>(wrapIndex(static_cast<int>(m_field) + 1, fieldCount));
+        return Transition::none();
+    }
+
+    Transition MenuState::handleMouse(AppContext& context)
+    {
+        const Input& input = context.input;
+
+        // Hover follows the pointer, but only while it is actually moving --
+        // otherwise a mouse left sitting over a field would keep stealing focus
+        // back from the arrow keys.
+        if (input.mouseMoved())
+        {
+            const int hovered = m_hits.hovered(input);
+            if (hovered >= 0 && hovered < static_cast<int>(Field::Count))
+                m_field = static_cast<Field>(hovered);
+        }
+
+        const int clicked = m_hits.clicked(input);
+        if (clicked == ui::HitMap::kNone)
+            return Transition::none();
+
+        if (clicked >= HitColourSwatch && clicked < HitColourSwatch + ui::playerColourCount())
+        {
+            context.profile.colour = ui::playerColourAt(clicked - HitColourSwatch);
+            m_field = Field::Colour;
+            return Transition::none();
+        }
+
+        if (clicked == HitTypePrev || clicked == HitTypeNext)
+        {
+            m_field = Field::Type;
+            adjust(context, clicked == HitTypeNext ? 1 : -1);
+            return Transition::none();
+        }
+
+        if (clicked >= 0 && clicked < static_cast<int>(Field::Count))
+        {
+            m_field = static_cast<Field>(clicked);
+
+            // Clicking a button presses it; clicking a field only focuses it,
+            // because there is nothing else a click on a text box should mean.
+            if (m_field == Field::Start || m_field == Field::Multiplayer)
+                return confirmField(context);
         }
 
         return Transition::none();
@@ -186,6 +230,7 @@ namespace neoncoil
     void MenuState::render(AppContext& context)
     {
         context.screen.clear(Color::Black);
+        m_hits.clear();
 
         // Background plate, dimmed hard so it stays behind the UI rather than
         // competing with it.
@@ -206,7 +251,8 @@ namespace neoncoil
         x += ui::keyHint(screen, x, ui::kFooterY, L"UP/DOWN", L"Field", Color::Black) + 4;
         x += ui::keyHint(screen, x, ui::kFooterY, L"LEFT/RIGHT", L"Change", Color::Black) + 4;
         x += ui::keyHint(screen, x, ui::kFooterY, L"ENTER", L"Next / Start", Color::Black) + 4;
-        ui::keyHint(screen, x, ui::kFooterY, L"ESC", L"Quit", Color::Black);
+        x += ui::keyHint(screen, x, ui::kFooterY, L"ESC", L"Quit", Color::Black) + 4;
+        ui::keyHint(screen, x, ui::kFooterY, L"MOUSE", L"Click anything", Color::Black);
     }
 
     void MenuState::renderTitle(AppContext& context) const
@@ -245,6 +291,7 @@ namespace neoncoil
         const bool focusedColour = m_field == Field::Colour;
         const bool focusedType = m_field == Field::Type;
         const bool focusedStart = m_field == Field::Start;
+        const bool focusedMultiplayer = m_field == Field::Multiplayer;
 
         screen.panel(kConfigX, kConfigY, kConfigW, kConfigH, Color::Slate, Color::Black);
         screen.text(kConfigX + 3, kConfigY, L" YOUR SNAKE ", Color::Gold, Color::Black);
@@ -260,6 +307,10 @@ namespace neoncoil
         screen.text(inner + 1, kConfigY + 3, ui::truncateTo(profile.name, boxWidth - 3),
             Color::White, focusedName ? Color::Navy : Color::Black);
 
+        // The label row is included so the whole line is a target, not just the
+        // one-cell-tall box.
+        m_hits.add(static_cast<int>(Field::Name), inner, kConfigY + 2, boxWidth, 2);
+
         if (focusedName && static_cast<int>(m_elapsed * 2.0f) % 2 == 0)
             screen.put(inner + 1 + static_cast<int>(profile.name.size()), kConfigY + 3,
                 glyph::HalfLeft, Color::Gold, Color::Navy);
@@ -267,6 +318,7 @@ namespace neoncoil
         // --- colour -----------------------------------------------------------
         const int colourY = kConfigY + 6;
         screen.text(inner, colourY, L"SNAKE COLOUR", focusedColour ? Color::Gold : Color::Silver, Color::Black);
+        m_hits.add(static_cast<int>(Field::Colour), inner, colourY, boxWidth, 5);
 
         // Swatches are 3 cells wide on a 5-cell pitch, which leaves the gap the
         // selection carets need without running past the panel.
@@ -280,6 +332,10 @@ namespace neoncoil
             const bool isSelected = static_cast<int>(i) == selected;
 
             screen.fillRect(x, colourY + 1, kSwatchWidth, 2, glyph::Block, kColourOptions[i].colour, Color::Black);
+
+            // A swatch is its own target: clicking a colour picks that colour
+            // rather than merely focusing the row and making you arrow to it.
+            m_hits.add(HitColourSwatch + static_cast<int>(i), x, colourY + 1, kSwatchWidth, 2);
 
             if (isSelected)
             {
@@ -301,6 +357,12 @@ namespace neoncoil
         screen.put(inner + boxWidth - 1, typeY + 1, glyph::TriRight, focusedType ? Color::Gold : Color::Slate, Color::Black);
         screen.textCenteredIn(inner, boxWidth, typeY + 1, type.name, type.accent, Color::Black);
 
+        // Row first, then the arrows on top of it: clicking the middle focuses
+        // the field, clicking an arrow steps the roster.
+        m_hits.add(static_cast<int>(Field::Type), inner, typeY, boxWidth, 3);
+        m_hits.add(HitTypePrev, inner - 1, typeY + 1, 3, 1);
+        m_hits.add(HitTypeNext, inner + boxWidth - 2, typeY + 1, 3, 1);
+
         const std::wstring counter = std::to_wstring(profile.snakeTypeIndex + 1) + L" / " +
             std::to_wstring(snakeTypeCount());
         screen.textCenteredIn(inner, boxWidth, typeY + 2, counter, Color::Slate, Color::Black);
@@ -311,19 +373,36 @@ namespace neoncoil
         screen.text(inner, tipsY + 1, L"Reach the level target to advance.", Color::Slate, Color::Black);
         screen.text(inner, tipsY + 2, L"SPACE fires your ability.  P pauses.", Color::Slate, Color::Black);
 
-        // --- start ------------------------------------------------------------
-        const int startY = kConfigY + 21;
-        const Color buttonBackground = focusedStart ? profile.colour : Color::Slate;
-        const Color buttonText = focusedStart ? Color::Black : Color::Silver;
-
-        screen.fillRect(inner, startY, boxWidth, 3, glyph::Space, buttonText, buttonBackground);
-        screen.textCenteredIn(inner, boxWidth, startY + 1, L"START  GAME", buttonText, buttonBackground);
-
-        if (focusedStart)
+        // --- start / multiplayer ----------------------------------------------
+        // Single player sits above and is focused first, because it is the mode
+        // that needs no connection, no session and no account -- the game has to
+        // be playable the moment it is installed.
+        const auto button = [&](int y, Field field, bool focused, const std::wstring& label,
+            Color background, const std::wstring& note)
         {
-            screen.put(inner - 1, startY + 1, glyph::TriRight, Color::Gold, Color::Black);
-            screen.put(inner + boxWidth, startY + 1, glyph::TriLeft, Color::Gold, Color::Black);
-        }
+            const Color fill = focused ? background : Color::Slate;
+            const Color text = focused ? Color::Black : Color::Silver;
+
+            screen.fillRect(inner, y, boxWidth, 1, glyph::Space, text, fill);
+            screen.textCenteredIn(inner, boxWidth, y, label, text, fill);
+            m_hits.add(static_cast<int>(field), inner, y, boxWidth, 1);
+
+            if (focused)
+            {
+                screen.put(inner - 1, y, glyph::TriRight, Color::Gold, Color::Black);
+                screen.put(inner + boxWidth, y, glyph::TriLeft, Color::Gold, Color::Black);
+            }
+
+            if (!note.empty())
+                screen.textCenteredIn(inner, boxWidth, y + 1, note, Color::Slate, Color::Black);
+        };
+
+        // Rows 20..23 of a 25-row panel: the note under the second button lands
+        // on the last interior row, clear of the border.
+        button(kConfigY + 20, Field::Start, focusedStart, L"START  GAME", profile.colour,
+            L"offline, on your own");
+        button(kConfigY + 22, Field::Multiplayer, focusedMultiplayer, L"MULTIPLAYER", Color::Aqua,
+            L"two to four players online");
     }
 
     void MenuState::renderPortrait(AppContext& context) const

@@ -1,5 +1,7 @@
 #include "App.h"
 
+#include "tools/NetTest.h"
+
 #include <iostream>
 
 int main(int argc, char* argv[])
@@ -23,6 +25,10 @@ int main(int argc, char* argv[])
     // touch the game screen, so it returns before App is ever constructed.
     if (options.selfTestLevels > 0)
         return neoncoil::runGeneratorSelfTest(options.selfTestLevels, options.seed);
+
+    // Same contract as the generator self-test: console only, no App, no window.
+    if (options.netSelfTest)
+        return neoncoil::runNetworkSelfTest();
 
     if (options.dumpLevel > 0)
         return neoncoil::dumpLevelToConsole(options.dumpLevel, options.seed);
