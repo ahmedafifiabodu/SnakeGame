@@ -67,9 +67,6 @@ neoncoil_identity.txt
 # Relay-only server build tree
 build-relayonly/
 
-# Captured media and working notes: kept locally, deliberately not published.
-# ARCHITECTURE.md and MULTIPLAYER.md are the only docs the repo carries.
-docs/*.png
-docs/*.gif
-docs/ASSETS.md
+
+# Draft social copy: working material, not documentation.
 docs/linkedin_multiplayer.md
