@@ -2,7 +2,7 @@
 
 How NEON COIL does four-player online play, and why it does it that way.
 
-Overview and quick start: [README](../README.md#multiplayer).
+Overview: [README](../README.md#multiplayer).
 
 ### The topology, and why there are no dedicated servers
 

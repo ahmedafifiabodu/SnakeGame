@@ -4,13 +4,6 @@ An arcade snake game in C++20 on SFML. Five snakes with real mechanical
 identities, procedurally generated levels that are *provably* playable, and
 four-player online multiplayer that needs no account and no router configuration.
 
-![Viper on level 8, threading a Pillars layout past four sentinels](docs/demo_play.gif)
-
-<sup>Every image and clip on this page is the real build, recorded by the game
-itself, offscreen, from a pinned seed. Nothing here was staged.</sup>
-
----
-
 ## What it is
 
 | | |
@@ -22,41 +15,7 @@ itself, offscreen, from a pinned seed. Nothing here was staged.</sup>
 | **Renderer** | Procedural neon: glow, particles, screen shake, batched into a few draw calls. |
 | **Input** | Keyboard and mouse everywhere. |
 
-## Screens
-
-**The front end.** A name, a colour, and the roster. Each snake's speed, growth and
-ability sit next to its portrait, so the pick is informed rather than blind.
-
-![The main menu, with the Viper field report open](docs/shot_menu.png)
-
-**A run.** Level 8, 405 of the 520 points needed to clear it, on a ×3 combo, four
-sentinels on patrol and a bonus fruit burning down its timer.
-
-![Level 8 gameplay](docs/shot_play.png)
-
-**Four players, one arena.** Eat to score, cut somebody off to score more, respawn a
-few seconds later. Highest score when the clock runs out.
-
-![Four snakes sharing one arena, eating, dying and respawning](docs/demo_netplay.gif)
-
-**The lobby.** Four players, four snakes, four colours. The activity feed is real. The
-host's button names whoever it is waiting on, because a lobby never has to fill up —
-two players is a match.
-
-![A full four-player lobby](docs/shot_lobby.png)
-
-<details>
-<summary>More screens — pause, level clear, game over, the session browser</summary>
-
-![The pause menu over the level 8 board](docs/shot_pause.png)
-
-![The level-clear panel after clearing level 7](docs/shot_clear.png)
-
-![The game over screen after a sixteen-level run](docs/shot_over.png)
-
-![The multiplayer menu, browsing for sessions](docs/shot_netmenu.png)
-
-</details>
+Grab a build from [Releases](../../releases), or build it below.
 
 ## Build
 
@@ -82,12 +41,20 @@ clickable, and hover follows the pointer.
 Two turns can be buffered, so fast double-taps around a corner register instead of
 being swallowed.
 
+Reach the level target to advance. Levels get harder through layout and hazards
+rather than raw speed: the snake resets to its starting length each level, so the
+difficulty is the board, not an unmanageable tail.
+
 ## Multiplayer
 
 ```
 Main menu ──> START GAME ────────────────────> run          (offline, no account)
           └─> MULTIPLAYER ──> lobby ──> match ──> results ──> lobby
 ```
+
+Up to four snakes share one generated arena for a timed deathmatch. Eat to score,
+cut somebody off to score more, respawn a few seconds later, highest score when the
+clock runs out. **Two players is a match** — the lobby never has to fill up.
 
 **One player hosts and simulates. Everyone else sends intents and draws what comes
 back.** A listen server, not a dedicated one — with four players a datacentre would
@@ -98,7 +65,7 @@ flowchart LR
     subgraph lan [Same network]
         H1[Host<br/>simulates] <-->|direct TCP| G1[Guest]
     end
-    subgraph net [Across the internet]
+    subgraph online [Across the internet]
         H2[Host<br/>simulates] -->|dials out| R[(Relay<br/>dumb byte pump)]
         G2[Guest] -->|dials out| R
         G3[Guest] -->|dials out| R
@@ -109,8 +76,8 @@ Neither end has to accept an inbound connection: **both dial out to the relay**,
 nobody forwards a port. The relay never parses a game message and holds no game
 state, so it needs no redeploy when the game changes.
 
-Hosting a session is one button. Joining is a six-letter code, a session picked off
-the local network, or an address.
+Hosting is one button. Joining is a six-letter code, a session picked off the local
+network, or an address.
 
 <details>
 <summary>Running your own relay</summary>
@@ -190,9 +157,9 @@ refusing a fifth player, playing a match out, a player leaving mid-match, the ho
 quitting, LAN discovery, and all of it again through the relay. It measures snapshot
 size rather than estimating hosting cost.
 
-The screenshots are captured the same way — `--screenshot lobby` stands a real
-four-seat session up inside the process. The only thing staged is that all four
-players happen to be on one machine.
+The game also photographs itself. `--screenshot` and `--capture` render any screen
+offscreen with no window and no human — and for the multiplayer screens they stand a
+real four-seat session up inside the process, so a captured lobby is a real one.
 
 <details>
 <summary>All command-line options</summary>
