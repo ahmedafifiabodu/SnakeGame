@@ -1,13 +1,20 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(NeonCoil
-    VERSION 0.1.0
+    VERSION 0.2.0
     DESCRIPTION "NEON COIL - arcade snake"
     LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Needed to compile src/app.rc, which carries the executable's icon. Enabled
+# here rather than in project() so a Linux relay build never looks for a
+# resource compiler it has no use for.
+if(WIN32)
+    enable_language(RC)
+endif()
 
 # Single output tree so the game, its shaders and any future content sit
 # together and can be zipped straight into a Steam depot.
@@ -71,7 +78,17 @@ find_package(Threads REQUIRED)
 
 if(NOT NEONCOIL_RELAY_ONLY)
 
+# The executable's own icon and version info. Windows only -- and distinct from
+# the window icon the game sets at runtime, which does nothing for the file as it
+# sits in a folder or on a taskbar before launch.
+set(NEONCOIL_RESOURCES "")
+if(WIN32)
+    set(NEONCOIL_RESOURCES src/app.rc)
+endif()
+
 add_executable(NeonCoil
+    ${NEONCOIL_RESOURCES}
+
     src/main.cpp
     src/App.cpp
 

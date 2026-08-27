@@ -1,0 +1,46 @@
+// Windows resources for the game executable.
+//
+// This is the icon Explorer, the taskbar and Alt-Tab show for NeonCoil.exe.
+// It is a separate thing from the window icon Screen::setIcon applies at
+// runtime from assets/ui/icon.png: that one only exists once the game is
+// running, and says nothing about the file sitting in a folder.
+//
+// The first icon in the file, by ordinal, is the one Windows uses for the
+// executable, so this stays as ID 1.
+
+#include <windows.h>
+
+1 ICON "../assets/icon.ico"
+
+// Version information, so the file's Properties pane and any installer read
+// something truthful rather than a blank.
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     0,2,0,0
+PRODUCTVERSION  0,2,0,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+FILEFLAGS       VS_FF_DEBUG
+#else
+FILEFLAGS       0
+#endif
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "NEON COIL"
+            VALUE "FileVersion",     "0.2.0.0"
+            VALUE "InternalName",    "NeonCoil"
+            VALUE "OriginalFilename","NeonCoil.exe"
+            VALUE "ProductName",     "NEON COIL"
+            VALUE "ProductVersion",  "0.2.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
