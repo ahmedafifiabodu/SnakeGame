@@ -11,8 +11,12 @@
 # character of every code that relay hands out -- so a guest typing a code is
 # dialled to the region the session is actually in.
 #
-#   ./tools/deploy_relay.sh --region me-central2 --zone me-central2-a \
-#       --tag M --name middle-east --repo https://github.com/you/neoncoil.git
+#   ./tools/deploy_relay.sh --region me-west1 --tag M --name middle-east \
+#       --repo https://github.com/you/neoncoil.git
+#
+# The zone is picked for you. Small machines run out per-zone, and a relay
+# does not care which zone it lives in, so every zone in the region is tried
+# rather than making a person re-run this with a different letter on the end.
 #
 # Prints the netconfig.txt line to paste when it finishes.
 #
@@ -32,10 +36,12 @@ MACHINE="e2-micro"
 usage()
 {
     cat <<'USAGE'
-Usage: deploy_relay.sh --region <r> --zone <z> --tag <L> --name <n> --repo <url>
+Usage: deploy_relay.sh --region <r> --tag <L> --name <n> --repo <url> [--zone <z>]
 
-  --region   GCP region, e.g. me-central2
-  --zone     Zone within it, e.g. me-central2-a
+  --region   GCP region, e.g. me-west1
+  --zone     Zone to try first, e.g. me-west1-b. Optional: without it every
+             zone in the region is tried in turn, and with it the rest are
+             still tried if that one has no capacity.
   --tag      One letter for this region's codes, e.g. M. Avoid I, L and O:
              codes get read aloud, and those are the ones people mishear.
   --name     Short name for the VM and the static IP, e.g. middle-east
@@ -59,7 +65,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-for required in REGION ZONE TAG NAME REPO; do
+for required in REGION TAG NAME REPO; do
     if [ -z "${!required}" ]; then
         echo "missing --$(echo "$required" | tr '[:upper:]' '[:lower:]')" >&2
         usage
@@ -163,21 +169,77 @@ systemctl enable --now neoncoil-relay
 STARTUP_SCRIPT
 
 # --- the machine ------------------------------------------------------------
-if gcloud compute instances describe "$VM" --zone="$ZONE" >/dev/null 2>&1; then
-    echo "instance $VM already exists in $ZONE -- delete it first to redeploy" >&2
+#
+# Zones run out of small machines. ZONE_RESOURCE_POOL_EXHAUSTED is not a
+# misconfiguration and not something waiting fixes reliably -- it means that
+# zone has no e2-micro to give right now, and the one next door probably does.
+# Since a relay does not care which zone it lives in, the script tries them all
+# rather than making a person re-run it with a different letter.
+#
+# The address is reserved per REGION, so every zone below reuses the same one.
+ZONES="$(gcloud compute zones list --filter="region:(${REGION})" --format='value(name)' | sort)"
+
+if [ -z "$ZONES" ]; then
+    echo "no zones found in $REGION -- is the region name right, and the Compute API enabled?" >&2
     exit 1
 fi
 
-echo "creating $VM in $ZONE at $ADDRESS"
-gcloud compute instances create "$VM" \
-    --zone="$ZONE" \
-    --machine-type="$MACHINE" \
-    --image-family=debian-12 \
-    --image-project=debian-cloud \
-    --boot-disk-size=10GB \
-    --tags="$NETWORK_TAG" \
-    --address="$ADDRESS" \
-    --metadata-from-file=startup-script="$STARTUP"
+# A zone named on the command line is tried first; the rest follow as fallbacks.
+if [ -n "$ZONE" ]; then
+    ZONES="$ZONE $(echo "$ZONES" | grep -v "^${ZONE}$" | tr '\n' ' ')"
+fi
+
+for candidate in $ZONES; do
+    if gcloud compute instances describe "$VM" --zone="$candidate" >/dev/null 2>&1; then
+        echo "instance $VM already exists in $candidate -- delete it first to redeploy" >&2
+        exit 1
+    fi
+done
+
+CREATED=""
+LAST_ERROR=""
+
+for candidate in $ZONES; do
+    echo "creating $VM in $candidate at $ADDRESS"
+
+    if OUTPUT="$(gcloud compute instances create "$VM" \
+        --zone="$candidate" \
+        --machine-type="$MACHINE" \
+        --image-family=debian-12 \
+        --image-project=debian-cloud \
+        --boot-disk-size=10GB \
+        --tags="$NETWORK_TAG" \
+        --address="$ADDRESS" \
+        --metadata-from-file=startup-script="$STARTUP" 2>&1)"; then
+        echo "$OUTPUT"
+        CREATED="$candidate"
+        break
+    fi
+
+    LAST_ERROR="$OUTPUT"
+
+    # Only capacity is worth moving zone for. A quota problem, a bad image or a
+    # permission error will fail identically everywhere, and retrying it five
+    # times buries the message that says what is actually wrong.
+    if ! echo "$OUTPUT" | grep -q "ZONE_RESOURCE_POOL_EXHAUSTED"; then
+        echo "$OUTPUT" >&2
+        exit 1
+    fi
+
+    echo "  no ${MACHINE} capacity in ${candidate}, trying the next zone"
+done
+
+if [ -z "$CREATED" ]; then
+    echo "$LAST_ERROR" >&2
+    echo "" >&2
+    echo "No zone in ${REGION} has ${MACHINE} capacity right now. Either wait, or" >&2
+    echo "pass a different --machine (e2-small is the next size up), or pick" >&2
+    echo "another region -- a relay two hundred kilometres further away is worth" >&2
+    echo "more than one that does not exist." >&2
+    exit 1
+fi
+
+ZONE="$CREATED"
 
 cat <<DONE
 
