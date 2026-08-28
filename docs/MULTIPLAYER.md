@@ -323,12 +323,20 @@ For a game selling worldwide, five covers most of it:
 |---|---|---|---|
 | `U` | US CENTRAL | `us-central1` | North America |
 | `E` | EUROPE | `europe-west1` | Europe, North Africa |
-| `M` | MIDDLE EAST | `me-central2` | Middle East, Egypt, West Asia |
+| `M` | MIDDLE EAST | `me-west1` | Middle East, Egypt, West Asia |
 | `A` | ASIA | `asia-southeast1` | South and South-East Asia |
 | `S` | S AMERICA | `southamerica-east1` | South America |
 
 Add `asia-northeast1` (Japan/Korea) and `australia-southeast1` when players
-appear there. Avoid `I`, `L` and `O` as tags for the same reason the code
+appear there.
+
+Not every region a project can *see* is one it can *use*. `me-central1` (Doha)
+and `me-central2` (Dammam) are request-only: they list as `STATUS: UP` and then
+refuse resource creation with `Permission denied on 'locations/me-central2'`,
+which reads like a typo rather than a policy. `me-west1` is generally available
+and close enough to the same players. Check with
+`gcloud compute zones list --filter="region:<the region>"` before committing to
+one. Avoid `I`, `L` and `O` as tags for the same reason the code
 alphabet leaves them out: a code that is read aloud has to survive being
 misheard.
 
