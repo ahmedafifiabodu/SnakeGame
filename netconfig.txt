@@ -28,11 +28,19 @@
 #
 # Deploy each with tools/deploy_relay.sh, which prints the line to paste here.
 
-relay = U | US CENTRAL  | 35.222.57.3 | 45700
+relay = M | MIDDLE EAST | 35.252.17.161 | 45700
 
 # Uncomment as each region comes up.
 #
-# relay = E | EUROPE      | <ip> | 45700
-# relay = M | MIDDLE EAST | <ip> | 45700
-# relay = A | ASIA        | <ip> | 45700
-# relay = S | S AMERICA   | <ip> | 45700
+# relay = E | EUROPE     | <ip> | 45700
+# relay = U | US CENTRAL | <ip> | 45700
+# relay = A | ASIA       | <ip> | 45700
+# relay = S | S AMERICA  | <ip> | 45700
+
+# The old untagged relay at 35.222.57.3 is deliberately not listed.
+#
+# It was started before --region existed, so it mints six-character codes with
+# no region letter on them. With one relay configured that is unambiguous and
+# fine; with several it is not, because a code that names no region cannot say
+# which relay to dial. Redeploy US coverage with tools/deploy_relay.sh --tag U
+# rather than adding the old box back untagged.
