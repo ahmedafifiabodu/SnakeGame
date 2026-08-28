@@ -267,7 +267,15 @@ namespace neoncoil::tools
         impl.ownedHost = std::make_unique<net::HostSession>(impl.config, *impl.hostIdentity);
         impl.host = impl.ownedHost.get();
 
-        if (!impl.host->open(kNames[0], 0, 0, net::HostSession::Reach::Direct, error))
+        // Direct unless the config says otherwise. always_use_relay turns a
+        // capture into a relayed session, which is what lets the multiplayer
+        // menu be photographed with an online row in it.
+        const net::HostSession::Reach reach =
+            impl.config.alwaysUseRelay && impl.config.relayConfigured()
+                ? net::HostSession::Reach::Relay
+                : net::HostSession::Reach::Direct;
+
+        if (!impl.host->open(kNames[0], 0, 0, reach, error))
         {
             impl.ownedHost.reset();
             impl.host = nullptr;

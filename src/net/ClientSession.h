@@ -5,6 +5,7 @@
 #include "NetGame.h"
 #include "Transport.h"
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -50,6 +51,8 @@ namespace neoncoil::net
 
         const LobbyInfo& lobby() const override { return m_lobby; }
         PlayerSlot localSlot() const override { return m_localSlot; }
+        int pingMs() const override { return m_pingMs; }
+        int relayIndex() const override { return m_relayIndex; }
 
         void setReady(bool ready) override;
         void setLoadout(std::uint8_t colourIndex, std::uint8_t typeIndex) override;
@@ -90,5 +93,18 @@ namespace neoncoil::net
 
         float m_connectElapsed{ 0.0f };
         float m_heartbeatTimer{ 0.0f };
+
+        // Round-trip measurement. One heartbeat is in flight at a time, so a
+        // single outstanding nonce is enough -- and a stale echo, from a
+        // heartbeat that crossed a slower one, is discarded rather than
+        // producing a number that never happened.
+        std::uint32_t m_heartbeatNonce{ 0 };
+        std::chrono::steady_clock::time_point m_heartbeatSentAt{};
+        bool m_heartbeatPending{ false };
+
+        // Smoothed, because a raw round trip jitters by tens of milliseconds and
+        // a readout that flickers is one players stop believing.
+        int m_pingMs{ -1 };
+        int m_relayIndex{ -1 };
     };
 }

@@ -43,6 +43,15 @@ namespace neoncoil::net
         virtual const LobbyInfo& lobby() const = 0;
         virtual PlayerSlot localSlot() const = 0;
 
+        // Round trip to the host in milliseconds, or -1 before the first
+        // heartbeat has come back. Zero for the host, which is not going
+        // anywhere. Every other player's ping is in their LobbySlot.
+        virtual int pingMs() const { return 0; }
+
+        // Which relay this session is going through, as an index into
+        // NetConfig::relays, or -1 for a direct connection.
+        virtual int relayIndex() const { return -1; }
+
         virtual void setReady(bool ready) = 0;
         virtual void setLoadout(std::uint8_t colourIndex, std::uint8_t typeIndex) = 0;
 

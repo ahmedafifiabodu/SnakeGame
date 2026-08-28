@@ -82,6 +82,13 @@ namespace neoncoil::net
 
     // Six characters from an unambiguous alphabet. Over a relay this is not
     // decoration: it is the address, so it has to survive being read aloud.
-    std::wstring makeRelayCode(std::uint64_t seed);
+    //
+    // `regionTag`, when a relay has been given one, is prepended -- making the
+    // code seven characters, the first of which says which relay minted it. That
+    // is what lets a guest type a code and be dialled to the right relay out of
+    // several, without anybody having to say "and it is the Frankfurt one". Pass
+    // zero for an untagged relay and the code is six characters, exactly as
+    // before regions existed.
+    std::wstring makeRelayCode(std::uint64_t seed, wchar_t regionTag = 0);
     std::wstring normaliseCode(const std::wstring& code);
 }

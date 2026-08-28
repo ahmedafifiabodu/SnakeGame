@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <csignal>
 #include <cstdlib>
 #include <iostream>
@@ -32,6 +33,12 @@ namespace
             "Usage: neoncoil-relay [options]\n"
             "\n"
             "  --port <n>      Port to listen on (default 45700).\n"
+            "  --region <L>    One letter stamped on the front of every code this\n"
+            "                  relay hands out, so a guest typing that code is\n"
+            "                  dialled here rather than to another region. Give\n"
+            "                  each deployment its own letter and list them all\n"
+            "                  in the game's netconfig.txt. Omit it and codes are\n"
+            "                  six characters, as before regions existed.\n"
             "  --idle <secs>   Drop a session with no traffic for this long\n"
             "                  (default 300).\n"
             "  --quiet         Do not log sessions opening and closing.\n"
@@ -47,6 +54,7 @@ int main(int argc, char* argv[])
     float idleTimeout = 300.0f;
     float statsInterval = 60.0f;
     bool verbose = true;
+    wchar_t regionTag = 0;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -70,6 +78,16 @@ int main(int argc, char* argv[])
         {
             statsInterval = static_cast<float>(std::atof(argv[++i]));
         }
+        else if (argument == "--region" && hasValue)
+        {
+            const std::string tag = argv[++i];
+            if (tag.empty())
+            {
+                std::cerr << "--region needs a letter\n";
+                return 2;
+            }
+            regionTag = static_cast<wchar_t>(std::toupper(static_cast<unsigned char>(tag[0])));
+        }
         else if (argument == "--quiet")
         {
             verbose = false;
@@ -88,6 +106,7 @@ int main(int argc, char* argv[])
     neoncoil::relay::RelayServer relay;
     relay.setVerbose(verbose);
     relay.setIdleTimeoutSeconds(idleTimeout);
+    relay.setRegionTag(regionTag);
 
     std::wstring error;
     if (!relay.start(port, error))
@@ -96,7 +115,10 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    std::cout << "NEON COIL relay listening on port " << relay.port() << "\n";
+    std::cout << "NEON COIL relay listening on port " << relay.port();
+    if (regionTag != 0)
+        std::cout << ", region " << static_cast<char>(regionTag);
+    std::cout << "\n";
 
     // A 4ms tick is well inside the game's twenty-hertz snapshot rate and keeps
     // the process at a fraction of a core when nothing is connected.

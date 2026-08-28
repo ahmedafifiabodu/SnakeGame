@@ -59,6 +59,11 @@ namespace neoncoil::net
         const LobbyInfo& lobby() const override { return m_lobby; }
         PlayerSlot localSlot() const override { return m_localSlot; }
 
+        // The host is the far end. Its own ping to itself is zero, and saying so
+        // is more useful than leaving the readout blank.
+        int pingMs() const override { return 0; }
+        int relayIndex() const override { return m_relayIndex; }
+
         void setReady(bool ready) override;
         void setLoadout(std::uint8_t colourIndex, std::uint8_t typeIndex) override;
 
@@ -131,6 +136,7 @@ namespace neoncoil::net
         std::uint64_t m_matchSeed{ 0 };
 
         Reach m_reach{ Reach::Direct };
+        int m_relayIndex{ -1 };
 
         // Relayed hosts get their code from the relay rather than making one up,
         // so the lobby shows nothing until registration lands.
@@ -142,5 +148,23 @@ namespace neoncoil::net
 
         float m_snapshotTimer{ 0.0f };
         float m_advertTimer{ 0.0f };
+
+        // Seconds since the last snapshot went out, and the floor a move-driven
+        // one has to clear. Without the floor, four snakes stepping on four
+        // slightly different clocks could each trigger their own send and turn a
+        // twenty-hertz stream into a sixty-hertz one. Set at match start from
+        // snapshot_hz, so a host that asks for a faster stream is not held to a
+        // slower one than it configured.
+        float m_sinceSnapshot{ 0.0f };
+        float m_minimumSnapshotInterval{ 1.0f / 30.0f };
+        static constexpr float kMoveSnapshotCeilingHz = 30.0f;
+
+        // Guests report their ping on every heartbeat, which is once a second
+        // each. Rebroadcasting the lobby that often, for a number that only
+        // needs to be roughly right, would be four times the lobby traffic for
+        // nothing -- so changes are collected and sent on this timer instead.
+        bool m_pingDirty{ false };
+        float m_pingBroadcastTimer{ 0.0f };
+        static constexpr float kPingBroadcastSeconds = 2.0f;
     };
 }

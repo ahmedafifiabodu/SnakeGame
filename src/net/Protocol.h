@@ -21,7 +21,10 @@ namespace neoncoil::net
 {
     // Bumped whenever anything below changes shape. The host refuses a client
     // whose version differs rather than letting it desync silently.
-    inline constexpr std::uint16_t kProtocolVersion = 1;
+    //
+    // 2: heartbeats carry a nonce and a reported ping, so every player can see
+    //    every player's latency.
+    inline constexpr std::uint16_t kProtocolVersion = 2;
 
     // Stamped on the front of every message and on every discovery datagram, so
     // a stray packet from something else on the port is dropped rather than
@@ -36,8 +39,26 @@ namespace neoncoil::net
         RequestStart,   // honoured only from the host's own seat
         Input,
         ReturnToLobby,  // acknowledge a finished match
-        Heartbeat,
+        Heartbeat,      // + Heartbeat payload
         Leave
+    };
+
+    // What a heartbeat carries, in both directions.
+    //
+    // A heartbeat was already being sent once a second purely to prove the
+    // connection was alive, and an empty packet crossing the wire on a timer is
+    // exactly the thing a round-trip measurement needs. So the client stamps a
+    // nonce on its heartbeat, the host echoes that nonce straight back, and the
+    // difference in the client's own clock is the round trip -- no new message,
+    // no new timer, no clock synchronisation between two machines.
+    //
+    // The client then reports the number it measured on its NEXT heartbeat, so
+    // the host can put it in the lobby and everybody sees everybody's ping
+    // rather than only their own.
+    struct Heartbeat
+    {
+        std::uint32_t nonce{ 0 };
+        std::uint16_t reportedPingMs{ 0 };   // client -> host; ignored the other way
     };
 
     enum class ServerMessage : std::uint8_t
@@ -125,6 +146,9 @@ namespace neoncoil::net
 
     sf::Packet& operator<<(sf::Packet& packet, const InputCommand& input);
     sf::Packet& operator>>(sf::Packet& packet, InputCommand& input);
+
+    sf::Packet& operator<<(sf::Packet& packet, const Heartbeat& beat);
+    sf::Packet& operator>>(sf::Packet& packet, Heartbeat& beat);
 
     sf::Packet& operator<<(sf::Packet& packet, const MatchRules& rules);
     sf::Packet& operator>>(sf::Packet& packet, MatchRules& rules);

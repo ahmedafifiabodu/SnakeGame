@@ -3,6 +3,7 @@
 #include "../core/Colors.h"
 
 #include <array>
+#include <string>
 
 namespace neoncoil::ui
 {
@@ -35,4 +36,17 @@ namespace neoncoil::ui
     Color playerColourAt(int index);
     const wchar_t* playerColourName(int index);
     int playerColourIndex(Color colour);
+
+    // What a round trip looks like.
+    //
+    // Colour is the whole point of putting a number that changes every second in
+    // front of a player: they should be able to tell whether the connection is
+    // the problem without reading the digits. The bands are set against how this
+    // game actually feels rather than against a general-purpose scale -- it
+    // steps about eight times a second, so 60 ms is half a step and invisible,
+    // and 220 ms is nearly two steps and unmistakable.
+    //
+    // Negative means "not measured yet", which is a different thing from slow.
+    Color pingColour(int milliseconds);
+    std::wstring pingText(int milliseconds);
 }

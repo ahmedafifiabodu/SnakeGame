@@ -367,6 +367,17 @@ namespace neoncoil
             const Color tagColour = seat.isHost ? Color::Gold : (seat.ready ? Color::Lime : Color::Slate);
             screen.textCenteredIn(inner, width, kSlotsY + 9, tag, tagColour, Color::Black);
 
+            // Latency on the seat card, before the match rather than during it.
+            // A lobby is where a player can still do something about a bad
+            // connection -- once the countdown has run, the number is only ever
+            // an explanation.
+            if (!seat.isHost)
+            {
+                const int ping = seat.pingMs == 0 ? -1 : static_cast<int>(seat.pingMs);
+                screen.textCenteredIn(inner, width, kSlotsY + 8, ui::pingText(ping),
+                    ui::pingColour(ping), Color::Black);
+            }
+
             // Guest identity is local and unverified today. Saying so on the
             // card is honest, and it is the line that will read "SIGNED IN" once
             // accounts exist without the layout changing.
@@ -389,10 +400,24 @@ namespace neoncoil
         // --- how to be joined -------------------------------------------------
         if (m_session->isHost())
         {
-            screen.text(inner, kSideY + 2, L"Others on this network will see you in SESSIONS NEARBY.",
-                Color::Silver, Color::Black);
-            screen.text(inner, kSideY + 3, L"From outside it, they join by your address on port " +
-                std::to_wstring(lobby.port) + L".", Color::Slate, Color::Black);
+            // A relayed host listens on nothing, so it has no port and no
+            // address to offer -- it is found in the browser's online half, or
+            // by its code. Telling that host to hand out "port 0" was the old
+            // text's way of saying it had not been taught the difference.
+            if (lobby.port == 0)
+            {
+                screen.text(inner, kSideY + 2, L"Anyone will see you in OPEN SESSIONS, wherever they are.",
+                    Color::Silver, Color::Black);
+                screen.text(inner, kSideY + 3, L"Or give them the code above -- no port to forward.",
+                    Color::Slate, Color::Black);
+            }
+            else
+            {
+                screen.text(inner, kSideY + 2, L"Others on this network will see you in OPEN SESSIONS.",
+                    Color::Silver, Color::Black);
+                screen.text(inner, kSideY + 3, L"From outside it, they join by your address on port " +
+                    std::to_wstring(lobby.port) + L".", Color::Slate, Color::Black);
+            }
         }
         else
         {

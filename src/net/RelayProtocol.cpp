@@ -102,9 +102,12 @@ namespace neoncoil::net
         return packet;
     }
 
-    std::wstring makeRelayCode(std::uint64_t seed)
+    std::wstring makeRelayCode(std::uint64_t seed, wchar_t regionTag)
     {
         std::wstring code;
+        if (regionTag != 0)
+            code.push_back(regionTag);
+
         std::uint64_t value = seed;
 
         for (int i = 0; i < 6; ++i)

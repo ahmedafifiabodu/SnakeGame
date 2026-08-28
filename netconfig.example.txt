@@ -18,9 +18,12 @@ discovery_port = 45712
 # Seats in a session, 2 to 4.
 max_players = 4
 
-# How often the host sends the world to everyone, in snapshots per second.
-# The game only steps about eight times a second, so past ~20 this buys
-# nothing but bandwidth.
+# Ceiling on how often the host sends the world to everyone, in snapshots per
+# second, and the rate it falls back to when nothing is moving.
+#
+# Snapshots are sent when the board actually changes -- a snake stepping -- not
+# on this timer, so this is an upper bound rather than a schedule. The game only
+# steps about eight times a second, so past ~20 this buys nothing but bandwidth.
 snapshot_hz = 20
 
 # Seconds to wait for a connection before giving up.
@@ -36,14 +39,43 @@ peer_timeout = 12
 # the host and its guests dial OUT to it, so no player ever forwards a port,
 # and it works behind carrier-grade NAT and on mobile hotspots.
 #
-# Leave relay_host empty and the game is local-network only: HOST ONLINE is
+# Leave the relay list empty and the game is local-network only: HOST ONLINE is
 # shown greyed out, and HOST ON THIS NETWORK still works with no server at all.
+#
+#   relay = <tag> | <name> | <host> | <port>
+#
+# List one line per relay, nearest-to-most-players first. The tag is one letter
+# and must match the --region the relay process was started with: it becomes the
+# first character of every code that relay mints, which is what lets a guest type
+# a code and be dialled to the right region without being told which it is. Leave
+# the tag empty for a relay running without --region; its codes stay six
+# characters and route to whichever region is selected.
+#
+# The name is what the region picker shows, next to a live ping. Keep it short.
+#
+# relay = M | MIDDLE EAST | 34.1.2.3 | 45700
+# relay = E | EUROPE      | 34.4.5.6 | 45700
+# relay = U | US CENTRAL  | 35.7.8.9 | 45700
+
+# The single-relay form still works and means one relay with no region. Every
+# config written before regions existed keeps working unchanged.
 relay_host =
 relay_port = 45700
 
 # Send LAN games through the relay too. Off by default -- two players in the
 # same room should not take a detour through a datacentre.
 always_use_relay = 0
+
+# How often the multiplayer menu asks the relay what is open, in seconds, and
+# how long it waits for the answer. This is what fills OPEN SESSIONS with games
+# being hosted online, so a player can join one without being told a code.
+relay_list_interval = 3
+relay_list_timeout = 2.5
+
+# Put the relay near the players. Both the input and the snapshot cross the gap
+# between them and the relay machine, so a relay on another continent is paid
+# for four times per key press. It is the single largest source of lag in an
+# otherwise healthy session, and it is a redeploy to fix, not a rewrite.
 
 # --- discovery ---------------------------------------------------------------
 

@@ -1,11 +1,14 @@
 #include "NetTest.h"
 
+#include "../game/LevelGenerator.h"
+#include "../game/MatchSimulation.h"
 #include "../net/ClientSession.h"
 #include "../net/HostSession.h"
 #include "../net/Matchmaker.h"
 #include "../net/NetConfig.h"
 #include "../relay/RelayServer.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cwctype>
 #include <functional>
@@ -433,12 +436,138 @@ namespace neoncoil
         clientThree.reset();
         host.reset();
 
+        // ----------------------------------------------------------- regions --
+        //
+        // With one relay a code is just a code. With several, it has to say
+        // which relay minted it, or a guest typing one has no way to know where
+        // to dial and the whole point of running relays in more than one region
+        // collapses back to "everybody uses the first one in the list".
+        std::cout << "\nregion-tagged codes\n";
+
+        {
+            const std::wstring tagged = net::makeRelayCode(0x1234567890ABCDEFull, L'M');
+            const std::wstring plain = net::makeRelayCode(0x1234567890ABCDEFull);
+
+            check(tagged.size() == 7, "a tagged code is seven characters");
+            check(plain.size() == 6, "an untagged one is six, as before regions existed");
+            check(tagged[0] == L'M', "the tag is the first character");
+            check(tagged.substr(1) == plain, "and the rest of the code is unchanged by tagging");
+
+            net::NetConfig regions;
+            regions.relays.push_back({ "10.0.0.1", 45700, L"MIDDLE EAST", L'M' });
+            regions.relays.push_back({ "10.0.0.2", 45700, L"EUROPE", L'E' });
+            regions.selectRelay(0);
+
+            check(regions.relayIndexForCode(tagged) == 0, "a code routes to the region that minted it");
+            check(regions.relayIndexForCode(L'E' + plain) == 1, "and a different tag routes elsewhere");
+            check(regions.relayIndexForCode(plain) == -1, "an untagged code names no region");
+            check(regions.relayIndexForCode(L"Z" + plain) == -1, "nor does a tag this build does not have");
+
+            regions.selectRelay(1);
+            check(regions.relayHost == "10.0.0.2", "selecting a region is what a session then dials");
+            check(regions.relayPort == 45700, "with its port");
+
+            regions.selectRelay(99);
+            check(regions.relayHost == "10.0.0.2", "an out-of-range choice is ignored rather than obeyed");
+
+            // A code is read aloud and typed back in. The tag has to survive
+            // that trip exactly as the rest of the code does.
+            check(net::normaliseCode(L"m-4kp zw3") == L"M4KPZW3",
+                "a tagged code survives being lowercased, spaced and hyphenated");
+        }
+
+        // ---------------------------------------------------------- spawning --
+        //
+        // Every spawn and every respawn has to leave the player room to react.
+        // A snake cannot stop, so a wall one tile in front of a fresh head is
+        // not a hard start, it is a death the player was never offered a say in
+        // -- and over a relay their turn does not even reach the host in time to
+        // be refused. The arena is generated at its densest band so the check is
+        // made against the worst boards the game ships.
+        std::cout << "\nspawning with room to react\n";
+
+        {
+            constexpr int kFloor = 3;      // MatchSimulation's own minimum
+            constexpr int kBoards = 40;
+
+            int worstRunway = 999;
+            int totalSpawns = 0;
+            int boardsWithoutRoom = 0;
+
+            for (int board = 0; board < kBoards; ++board)
+            {
+                const std::uint64_t seed = 0xC0FFEEull + static_cast<std::uint64_t>(board) * 7919ull;
+
+                MatchRules rules;
+                const Level arena = LevelGenerator::generate(rules.arenaLevelIndex, seed, rules.startLength);
+
+                std::vector<MatchPlayerInit> players;
+                for (int i = 0; i < 4; ++i)
+                {
+                    MatchPlayerInit player;
+                    player.slot = static_cast<PlayerSlot>(i + 1);
+                    player.name = L"P" + std::to_wstring(i + 1);
+                    player.colourIndex = static_cast<std::uint8_t>(i);
+                    player.typeIndex = static_cast<std::uint8_t>(i);
+                    players.push_back(player);
+                }
+
+                MatchSimulation simulation;
+                simulation.start(arena, rules, seed, players);
+
+                MatchSnapshot snapshot;
+                simulation.buildSnapshot(snapshot);
+
+                bool boardShort = false;
+
+                for (const SnakeSnapshot& snake : snapshot.snakes)
+                {
+                    if (!snake.alive || snake.body.size() < 2)
+                        continue;
+
+                    // The snapshot does not carry a heading, but it does not
+                    // need to: the head and the segment behind it are one step
+                    // apart, and that step is the heading.
+                    const Vec2 head = snake.body[0];
+                    const Vec2 forward = head - snake.body[1];
+
+                    int runway = 0;
+                    for (int i = 1; i <= 8; ++i)
+                    {
+                        const Vec2 tile = head + forward * i;
+                        if (!simulation.arena().inBounds(tile) || simulation.arena().isWall(tile))
+                            break;
+                        ++runway;
+                    }
+
+                    ++totalSpawns;
+                    worstRunway = std::min(worstRunway, runway);
+                    if (runway < kFloor)
+                        boardShort = true;
+                }
+
+                if (boardShort)
+                    ++boardsWithoutRoom;
+            }
+
+            check(totalSpawns == kBoards * 4, "every player is placed on every board");
+            check(boardsWithoutRoom == 0, "no spawn faces a wall inside its reaction window");
+
+            std::cout << "  shortest runway across " << totalSpawns << " spawns on "
+                      << kBoards << " boards: " << worstRunway << " tiles ("
+                      << static_cast<int>(static_cast<float>(worstRunway) * MatchRules{}.tickSeconds * 1000.0f)
+                      << " ms of warning)\n";
+        }
+
         // ------------------------------------------------------- matchmaking --
         std::cout << "\nLAN discovery\n";
 
         {
-            auto advertiser = net::makeMatchmaker();
-            auto browser = net::makeMatchmaker();
+            // Named rather than taken from the factory: makeMatchmaker() now
+            // returns LAN and relay together when a relay is configured, and
+            // this test is about the LAN half on its own.
+            auto advertiser = std::make_unique<net::LanMatchmaker>();
+            auto browser = std::make_unique<net::LanMatchmaker>();
 
             net::NetConfig::instance().discoveryPort = config.discoveryPort;
 
@@ -475,6 +604,9 @@ namespace neoncoil
                 check(session->advert.code == L"TESTME", "the join code survives discovery");
                 check(session->advert.port == config.hostPort, "the discovered port is the one to connect to");
                 check(session->joinable(), "a session with room is reported as joinable");
+                check(!session->viaRelay, "a session found on the network is not marked as relayed");
+                check(narrow(session->where()) == session->address,
+                    "and its browser row shows the address to reach it on");
             }
         }
 
@@ -528,6 +660,66 @@ namespace neoncoil
 
                 const std::wstring code = relayHost->lobby().code;
                 check(code.size() == 6, "the code is six characters");
+
+                // Browsing the relay. This is what puts an online session in
+                // front of a player who was never told a code -- the same list
+                // the local network fills, from the other direction.
+                {
+                    net::NetConfig::instance().relayListIntervalSeconds = 1.0f;
+
+                    net::RelayEndpoint endpoint;
+                    endpoint.host = relayConfig.relayHost;
+                    endpoint.port = relayConfig.relayPort;
+                    endpoint.name = L"TEST";
+
+                    net::RelayMatchmaker browser(endpoint, 0);
+                    check(browser.startBrowsing(), "the relay browser starts");
+
+                    constexpr float step = 1.0f / 120.0f;
+
+                    // The query runs on a worker thread, so the relay has to
+                    // keep being pumped on this one for it to be answered --
+                    // which is exactly the arrangement the game is in.
+                    using Clock = std::chrono::steady_clock;
+                    const auto deadline = Clock::now() + std::chrono::seconds(10);
+                    bool listed = false;
+
+                    while (!listed && Clock::now() < deadline)
+                    {
+                        relayServer.pump();
+                        relayServer.tickTimers(step);
+                        relayHost->update(step);
+                        browser.update(step);
+                        listed = !browser.sessions().empty();
+                        std::this_thread::sleep_for(std::chrono::milliseconds(4));
+                    }
+
+                    check(listed, "an open online session appears in the browser with no code typed");
+
+                    if (listed)
+                    {
+                        const std::vector<net::RelayStatus>& statuses = browser.relayStatuses();
+                        check(statuses.size() == 1, "the browser reports the region it is watching");
+                        check(statuses.front().reachable, "and says whether it answered");
+                        check(statuses.front().pingMs >= 0,
+                            "and how long the round trip to it took");
+                        check(browser.fastestRelay() == 0,
+                            "a single reachable region is the fastest one by default");
+
+                        const net::DiscoveredSession& found = browser.sessions().front();
+                        check(found.relayIndex == 0,
+                            "a listed session remembers which relay it was found on");
+                        check(found.advert.code == code, "the listed session carries the host's code");
+                        check(found.viaRelay, "it is marked as reachable through the relay");
+                        check(found.address.empty(), "and carries no address, because its code is its address");
+                        check(found.where() == L"via relay",
+                            "the browser row says how it is reached rather than showing a blank");
+                        check(found.joinable(), "a relayed session with room is reported as joinable");
+                        check(browser.bestJoinable() == &found, "quick match would pick it");
+                    }
+
+                    browser.stopBrowsing();
+                }
 
                 auto relayOne = std::make_unique<net::ClientSession>(relayConfig, relayGuestA);
                 auto relayTwo = std::make_unique<net::ClientSession>(relayConfig, relayGuestB);
@@ -592,6 +784,36 @@ namespace neoncoil
                 }, 15.0f);
 
                 check(started, "the match starts for both relayed guests");
+
+                // Latency, end to end. The guest times its own heartbeat against
+                // the host's echo, reports the number on its next one, and the
+                // host puts it in the lobby -- so every player ends up holding
+                // every player's ping rather than only their own.
+                {
+                    const bool measured = pumpUntil(relayAll, [&]
+                    {
+                        return relayOne->pingMs() >= 0 && relayTwo->pingMs() >= 0;
+                    }, 15.0f);
+
+                    check(measured, "a guest measures its own round trip to the host");
+                    check(relayHost->pingMs() == 0, "and the host, being the far end, reports zero");
+
+                    const bool shared = pumpUntil(relayAll, [&]
+                    {
+                        const net::LobbySlot* seat = relayHost->lobby().find(relayOne->localSlot());
+                        return seat != nullptr && seat->pingMs > 0;
+                    }, 15.0f);
+
+                    // Over loopback the real answer is under a millisecond, so
+                    // this only checks that a number arrived and is not absurd.
+                    // What it is actually proving is the path, not the value.
+                    check(shared || relayOne->pingMs() == 0,
+                        "the host learns each guest's ping, or it was too fast to register");
+
+                    const net::LobbySlot* mirrored = relayTwo->lobby().find(relayOne->localSlot());
+                    check(mirrored != nullptr,
+                        "and every other guest sees that seat in their own copy of the lobby");
+                }
                 check(relayOne->arena().width() > 0, "the arena crosses the relay intact");
 
                 // Bandwidth is the number that decides what the relay costs to

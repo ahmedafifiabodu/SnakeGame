@@ -118,6 +118,7 @@ add_executable(NeonCoil
     src/net/Protocol.cpp
     src/net/RelayProtocol.cpp
     src/net/RelayTransport.cpp
+    src/net/SocketOptions.cpp
     src/net/TcpTransport.cpp
 
     src/relay/RelayServer.cpp
@@ -193,6 +194,7 @@ add_executable(neoncoil-relay
 
     src/core/Rng.cpp
     src/net/RelayProtocol.cpp
+    src/net/SocketOptions.cpp
 )
 
 target_include_directories(neoncoil-relay PRIVATE src)

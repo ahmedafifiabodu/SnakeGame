@@ -67,6 +67,18 @@ namespace neoncoil::net
                 std::clamp(m_config.maxPlayers, 1, kMaxMatchPlayers));
             advert.inMatch = false;
 
+            // Which of the configured relays this is, so the lobby can name the
+            // region and the ping readout can attribute itself to one.
+            for (std::size_t i = 0; i < m_config.relays.size(); ++i)
+            {
+                if (m_config.relays[i].host == m_config.relayHost &&
+                    m_config.relays[i].port == m_config.relayPort)
+                {
+                    m_relayIndex = static_cast<int>(i);
+                    break;
+                }
+            }
+
             auto relay = std::make_unique<RelayServerTransport>(m_config.relayHost, m_config.relayPort, advert);
             if (!relay->start(0, error))
             {
@@ -414,8 +426,37 @@ namespace neoncoil::net
             break;
         }
 
-        case ClientMessage::ReturnToLobby:
         case ClientMessage::Heartbeat:
+        {
+            Heartbeat beat;
+            packet >> beat;
+            if (!packet)
+                break;
+
+            // Echoed straight back, unread apart from the nonce: the host is not
+            // measuring anything here, it is being the far end of somebody
+            // else's measurement.
+            sf::Packet reply = beginServer(ServerMessage::Heartbeat);
+            reply << beat;
+            m_transport->send(peer, std::move(reply));
+
+            // What the guest measured last time round. Put in the lobby so that
+            // every player sees every player's latency rather than only their
+            // own -- which is the difference between "the game feels bad" and
+            // "the game feels bad because that player is 300 ms away".
+            if (client->slot != kInvalidSlot)
+            {
+                LobbySlot& seat = m_lobby.slots[client->slot];
+                if (seat.occupied && seat.pingMs != beat.reportedPingMs)
+                {
+                    seat.pingMs = beat.reportedPingMs;
+                    m_pingDirty = true;
+                }
+            }
+            break;
+        }
+
+        case ClientMessage::ReturnToLobby:
             break;
 
         case ClientMessage::Leave:
@@ -523,6 +564,8 @@ namespace neoncoil::net
         m_phase = SessionPhase::InMatch;
         m_status = L"Match running";
         m_snapshotTimer = 0.0f;
+        m_minimumSnapshotInterval = 1.0f / std::max(kMoveSnapshotCeilingHz, m_config.snapshotHz);
+        m_sinceSnapshot = m_minimumSnapshotInterval;
 
         for (const Client& client : m_clients)
         {
@@ -659,6 +702,17 @@ namespace neoncoil::net
                 m_transport->disconnect(client.peer);
         }
 
+        // Pings change constantly and are worth almost nothing individually, so
+        // they ride a slow timer of their own rather than making every heartbeat
+        // broadcast the whole lobby to everybody.
+        m_pingBroadcastTimer -= deltaSeconds;
+        if (m_pingDirty && m_pingBroadcastTimer <= 0.0f)
+        {
+            m_pingDirty = false;
+            m_pingBroadcastTimer = kPingBroadcastSeconds;
+            broadcastLobby();
+        }
+
         if (m_matchmaker)
         {
             m_matchmaker->update(deltaSeconds);
@@ -679,22 +733,38 @@ namespace neoncoil::net
         for (std::wstring& line : m_simulation.drainEvents())
             note(std::move(line));
 
-        // Snapshots go out at a fixed rate rather than every frame: the game
-        // steps roughly eight times a second, so sixty snapshots a second would
-        // be sixty times the bandwidth for no visible difference.
+        // The host refreshes its own view every frame -- it costs nothing
+        // locally and keeps the host's board stepping at the simulation rate
+        // rather than the snapshot rate.
+        m_simulation.buildSnapshot(m_snapshot);
+
+        // What goes on the wire is event-driven, not clock-driven.
+        //
+        // Sixty snapshots a second would be sixty times the bandwidth for no
+        // visible difference, because the board only changes when a snake steps
+        // -- roughly eight times a second. But a fixed twenty-hertz timer is the
+        // other mistake: it lands wherever it lands relative to the step, so on
+        // average it sat half a snapshot interval on a move that had already
+        // happened. Over a relay that delay is stacked on top of an already long
+        // round trip, and it is the part of the lag that is ours to remove.
+        //
+        // So: send the instant the board changes, with the timer demoted to a
+        // ceiling on the rate and a keepalive for the clock and the food timers.
         m_snapshotTimer -= deltaSeconds;
-        if (m_snapshotTimer <= 0.0f)
+
+        const bool changed = m_simulation.steppedLastUpdate();
+        const bool due = m_snapshotTimer <= 0.0f;
+        const bool tooSoon = m_sinceSnapshot < m_minimumSnapshotInterval;
+
+        if ((changed && !tooSoon) || due)
         {
             m_snapshotTimer = 1.0f / std::max(1.0f, m_config.snapshotHz);
-            m_simulation.buildSnapshot(m_snapshot);
+            m_sinceSnapshot = 0.0f;
             broadcastSnapshot();
         }
         else
         {
-            // The host still refreshes its own view every frame -- it costs
-            // nothing locally and keeps the host's board from stepping at the
-            // snapshot rate instead of the simulation rate.
-            m_simulation.buildSnapshot(m_snapshot);
+            m_sinceSnapshot += deltaSeconds;
         }
 
         if (m_simulation.finished())
@@ -703,5 +773,12 @@ namespace neoncoil::net
             broadcastSnapshot();
             endMatch();
         }
+
+        // Same reasoning as on the client: the snapshot this function just built
+        // was queued after the pump at the top, so one pump per frame would hold
+        // it until the next one. Sending the moment the board changes is the
+        // point of the timer above -- and it is undone entirely if the packet
+        // then waits a frame to leave.
+        m_transport->pump();
     }
 }

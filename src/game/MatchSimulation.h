@@ -58,6 +58,12 @@ namespace neoncoil
         bool finished() const { return m_phase == MatchPhase::Finished; }
         std::uint32_t tick() const { return m_tick; }
 
+        // Whether the last update() actually moved anybody. The board only
+        // changes when a snake steps, so this is what tells the host session
+        // there is something new worth putting on the wire -- rather than it
+        // guessing on a timer and being, on average, half a snapshot late.
+        bool steppedLastUpdate() const { return m_stepped; }
+
         const Level& arena() const { return m_arena; }
         const MatchRules& rules() const { return m_rules; }
 
@@ -104,6 +110,14 @@ namespace neoncoil
         // keeps respawn placement reproducible from the match seed.
         bool chooseSpawn(const Racer& racer, Vec2& head, Direction& direction);
 
+        // Everything a spawn candidate is judged on. Free means in bounds, not
+        // wall, not hazard and nobody standing on it; the runway is how far a
+        // snake placed here could travel before it had to turn, and the escapes
+        // are the sideways exits from that runway.
+        bool spawnTileIsFree(Vec2 tile) const;
+        int runwayAhead(Vec2 head, Direction facing) const;
+        int escapesAhead(Vec2 head, Direction facing) const;
+
         void stepRacer(Racer& racer);
         void kill(Racer& racer, PlayerSlot culprit, const std::wstring& cause);
         void eat(Racer& racer, std::size_t foodIndex);
@@ -132,5 +146,6 @@ namespace neoncoil
         float m_phaseRemaining{ 0.0f };
         float m_bonusTimer{ 0.0f };
         std::uint32_t m_tick{ 0 };
+        bool m_stepped{ false };
     };
 }

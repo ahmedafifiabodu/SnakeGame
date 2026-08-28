@@ -83,18 +83,34 @@ simulation.
 
 ### Matchmaking
 
-`IMatchmaker` is an interface with one implementation today: **LAN discovery**,
-which needs no server and no account, so it works the moment the game is
-installed.
+`IMatchmaker` is an interface with two implementations, shown to the player as
+one list under `OPEN SESSIONS`.
 
-Clients probe and hosts answer, rather than hosts beaconing. Only the host binds
-the fixed discovery port, so any number of clients can browse on the same machine
-as a host — which is what makes it possible to test a full four-player session
-with four processes on one PC.
+**LAN discovery** needs no server and no account, so it works the moment the game
+is installed. Clients probe and hosts answer, rather than hosts beaconing. Only
+the host binds the fixed discovery port, so any number of clients can browse on
+the same machine as a host — which is what makes it possible to test a full
+four-player session with four processes on one PC. Replies are matched on the
+session code rather than the address, because a browser probes by broadcast *and*
+to loopback, and a host on the same machine would otherwise be listed twice.
+
+**Relay listing** asks the relay what is registered right now. Everything anybody
+is hosting online is in that answer, so a player joins by picking a row instead
+of being told a code by somebody they already know — which is the difference
+between a game you can play with a friend and a game you can play. The query is a
+blocking connect-ask-read, so it runs on a worker thread and its result is
+collected on a later frame; the list on screen is a couple of seconds old, which
+for a lobby list is invisible.
+
+`CompositeMatchmaker` merges the two. A local session sorts ahead of an online
+one and wins outright if the same code appears in both — same game, shorter path.
+Rows are labelled `LOCAL` or `ONLINE` so a player can see which is which before
+they commit to one.
 
 `QUICK MATCH` searches for a couple of seconds, joins the **fullest session that
-still has room**, and hosts one if there is nothing. Filling one lobby beats
-scattering four players across three sessions that never start.
+still has room** — preferring a local one — and hosts one if there is nothing.
+Filling one lobby beats scattering four players across three sessions that never
+start.
 
 A directory service, a Steam lobby search or a ranked queue all fit behind the
 same interface.
@@ -197,7 +213,7 @@ people:
 ./NeonCoil --name BRAVO --netconfig bravo.txt
 ```
 
-The first hosts; the rest find it under `SESSIONS NEARBY`, or join `127.0.0.1`.
+The first hosts; the rest find it under `OPEN SESSIONS`, or join `127.0.0.1`.
 
 ### Hosting a session
 
@@ -205,7 +221,7 @@ There is no server to run for a normal game and nothing for a player to
 configure. A host is a copy of the game with a host button pressed.
 
 **HOST ON THIS NETWORK** opens a TCP listener and answers discovery probes.
-Everyone on the same wifi sees the session under `SESSIONS NEARBY` and clicks it.
+Everyone on the same wifi sees the session under `OPEN SESSIONS` and clicks it.
 Nothing to set up, no relay, no account. This is the whole story for a LAN party
 or two people in one house.
 
@@ -274,16 +290,71 @@ docker build -f Dockerfile.relay -t neoncoil-relay .
 docker run -d --restart=always -p 45700:45700 --name relay neoncoil-relay
 ```
 
-Then point the game at it, once, in the `netconfig.txt` that ships beside the
-executable:
+Give each deployment its own region letter, and point the game at all of them,
+once, in the `netconfig.txt` that ships beside the executable:
+
+```bash
+./neoncoil-relay --port 45700 --region M --quiet
+```
 
 ```
-relay_host = relay.yourdomain.com
-relay_port = 45700
+relay = M | MIDDLE EAST | relay-me.yourdomain.com | 45700
+relay = E | EUROPE      | relay-eu.yourdomain.com | 45700
 ```
+
+The letter after `--region` and the letter in the config line have to match: it
+is the first character of every code that relay mints, and it is how a guest
+typing a code is dialled to the right one.
 
 Players never see any of that. They press `HOST ONLINE`, read out a code, and
-their friends type it in.
+their friends type it in — from whichever region is nearest them, which the game
+picks on its own.
+
+**How many.** One per cluster of players, not one per country. The relay is only
+ever a detour, so what matters is that nobody's detour is long; two players in
+one city are served perfectly by one relay in their region and gain nothing from
+a second. Add regions when players appear somewhere the existing ones do not
+reach, and let the ping column in the region picker decide it rather than a
+guess at a map.
+
+For a game selling worldwide, five covers most of it:
+
+| Tag | Region | GCP | Covers |
+|---|---|---|---|
+| `U` | US CENTRAL | `us-central1` | North America |
+| `E` | EUROPE | `europe-west1` | Europe, North Africa |
+| `M` | MIDDLE EAST | `me-central2` | Middle East, Egypt, West Asia |
+| `A` | ASIA | `asia-southeast1` | South and South-East Asia |
+| `S` | S AMERICA | `southamerica-east1` | South America |
+
+Add `asia-northeast1` (Japan/Korea) and `australia-southeast1` when players
+appear there. Avoid `I`, `L` and `O` as tags for the same reason the code
+alphabet leaves them out: a code that is read aloud has to survive being
+misheard.
+
+**One command per region.** `tools/deploy_relay.sh` creates the firewall rule
+once for the fleet, reserves a static address, and boots a machine whose startup
+script builds the relay from source and installs it as a systemd unit. It prints
+the `netconfig.txt` line to paste when it finishes.
+
+```bash
+./tools/deploy_relay.sh --region me-central2 --zone me-central2-a \
+    --tag M --name middle-east --repo <this repo's git url>
+```
+
+The address is reserved rather than ephemeral because it ships inside
+`netconfig.txt` beside the game: an IP that changes on reboot breaks every copy
+already installed.
+
+**What a fleet does and does not fix.** A session lives on exactly one relay --
+the host's. So the fleet makes every *host* close to their relay, and guests are
+then as close as geography allows. Two players in one country now share a relay
+in that country instead of one across an ocean, which is the whole win. A match
+between Cairo and São Paulo is still a match between Cairo and São Paulo; no
+placement makes that short, and nothing in this document pretends otherwise.
+
+What the fleet does do is stop the game from being needlessly slow for people who
+are near each other -- which, in practice, is most matches.
 
 Because the relay never parses a game message, that image and that binary do not
 need rebuilding when the game changes.
@@ -343,12 +414,112 @@ Open TCP `45700` on the relay machine's firewall. That is the only port
 forwarding in the entire system, it is done once, by you, on a machine you
 control — and never by a player.
 
+### Regions
+
+One relay is a single point of distance. Every player it serves pays the gap
+between themselves and it, twice per key press, whether they live next door to it
+or on another continent. So the game takes a **list** of relays rather than one.
+
+```
+relay = M | MIDDLE EAST | 34.1.2.3 | 45700
+relay = E | EUROPE      | 34.4.5.6 | 45700
+```
+
+**Codes carry their region.** A relay started with `--region M` stamps `M` on the
+front of every code it hands out, making it seven characters instead of six. A
+guest who types that code is dialled to that relay, without anybody having to say
+which region the session is in. An untagged relay still mints six-character codes
+and still works: that is what every deployment made before regions existed does,
+and none of them have to change.
+
+**The picker shows a live ping per region.** It is measured on the session-list
+query the browser is already sending every few seconds, so it is the real path a
+game would take rather than a synthetic probe — no extra message, no extra
+connection, and it works against a relay binary that predates the feature.
+
+`AUTO` is the default and resolves to whichever region is answering fastest right
+now. It is the right answer for nearly every player; the picker exists for the
+ones it is not right for, and for seeing *why* a session feels the way it does.
+
+`OPEN SESSIONS` merges every region into one list, **nearest first** -- local
+sessions, then by the ping of the region each one is in, then by how full it is.
+With relays on several continents the list stops being a handful of equally
+reachable sessions and becomes every open session on Earth, most of which this
+player should not join; ordering by distance is what keeps the top of the list
+the part worth reading. Truncation happens after the sort, so what falls off the
+end is the far side of the world rather than whichever region answered last.
+
+Each row is tagged with its region and that region's ping. Joining a row dials
+the relay the row was found on, not the one currently selected for hosting.
+
+### Ping
+
+Every player's round trip is on screen: on their seat in the lobby, next to their
+name in the match scoreboard, and — for the local player — top right during play.
+
+It is measured on the heartbeat that was already being sent once a second to
+prove the connection was alive. The client stamps a nonce on it, the host echoes
+that nonce straight back, and the difference on the client's own clock is the
+round trip. No new message, no new timer, and no clock synchronisation between
+two machines — an echoed nonce needs neither side to agree what time it is.
+
+The client then reports the number it measured on its *next* heartbeat, the host
+puts it in the lobby, and the lobby goes to everybody. That is what turns "the
+game feels bad" into "the game feels bad because that player is 300 ms away".
+
+The figure is quantised by the client's frame rate — a reply is noticed on the
+frame it is polled, not the instant it lands — so it reads a few milliseconds
+high. It never reads low, which is the direction to be wrong in.
+
+### Latency, and where it comes from
+
+Three things decide how long it takes for a key press to show up on screen, and
+they are not the same size.
+
+**Distance to the relay dominates everything else.** A relayed input travels
+player → relay → host, and the snapshot travels host → relay → player: two full
+crossings of whatever gap sits between the players and the relay machine. Two
+players in the same city with a relay on another continent pay that gap four
+times over for a game whose two ends are milliseconds apart. **Run the relay near
+the players.** It is one small always-on process with no state to migrate, so
+moving it is a redeploy, not a migration — and it is by far the largest lever in
+this document.
+
+**Nagle's algorithm** is off on every socket in the system, game and relay alike
+(`net::GameSocket`). Nagle holds a small write back until the previous one is
+acknowledged, which is right for a program that writes a byte at a time and
+exactly wrong for one whose every message is small and wanted now. Left on, it
+adds a fraction of a round trip at each of the four hops, and the four do not
+overlap.
+
+**Nothing waits a frame to leave.** Both sessions used to pump their transport
+once, at the top of update, and then queue everything they had to say -- so every
+input, every snapshot and every heartbeat sat in an outgoing queue until the next
+frame's pump. That is 16 ms at 60 fps on the way out and 16 ms on the way back,
+added to a path that has nothing to gain from it. Both sessions now pump again at
+the end, and the client flushes an input the moment it is handed one, because
+input arrives from the screen after update() has already run.
+
+**Snapshots are event-driven, not clock-driven.** The board only changes when a
+snake steps, so the host sends when it steps rather than on a timer that lands
+wherever it lands relative to the step. `snapshot_hz` survives as a ceiling on
+the rate and as a keepalive for the clock, not as the schedule. A fixed timer sat
+on average half an interval on a move that had already happened; that half
+interval is gone.
+
+What is deliberately *not* here is client-side prediction. The client holds no
+simulation — it renders the host's snapshot and forwards intents — which costs
+half a step of felt latency and saves a reconciliation system that would have to
+stay bug-for-bug identical with the host's rules. That trade is worth revisiting
+only once the relay is already close to the players, because until then it would
+be shaving a millisecond off a problem measured in hundreds.
+
 ### Which host button to use
 
 | | Reaches | Needs |
 |---|---|---|
 | `HOST ON THIS NETWORK` | Same wifi / LAN | Nothing |
-| `HOST ONLINE` | Anywhere | A relay you run, configured once in `netconfig.txt` |
+| `HOST ONLINE` | Anywhere | A relay you run, configured once in `netconfig.txt`. Several, in different regions, if you want it to feel good everywhere |
 | `JOIN BY ADDRESS` | A host that is listening | The host's address, and a forwarded port if across the internet |
 
 `JOIN BY ADDRESS` is kept for direct connections — LAN debugging, a dedicated box

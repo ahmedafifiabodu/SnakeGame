@@ -258,6 +258,23 @@ namespace neoncoil::net
 
     // ------------------------------------------------------------------- rules
 
+    sf::Packet& operator<<(sf::Packet& packet, const Heartbeat& beat)
+    {
+        return packet << beat.nonce << beat.reportedPingMs;
+    }
+
+    sf::Packet& operator>>(sf::Packet& packet, Heartbeat& beat)
+    {
+        packet >> beat.nonce >> beat.reportedPingMs;
+
+        // A ping is a display value, so an absurd one is clamped rather than
+        // treated as a protocol error: a player on a terrible connection should
+        // still be in the lobby, with a terrible number next to their name.
+        if (beat.reportedPingMs > 9999)
+            beat.reportedPingMs = 9999;
+        return packet;
+    }
+
     sf::Packet& operator<<(sf::Packet& packet, const MatchRules& rules)
     {
         return packet << rules.countdownSeconds << rules.durationSeconds

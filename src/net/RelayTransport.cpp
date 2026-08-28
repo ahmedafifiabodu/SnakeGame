@@ -6,6 +6,7 @@
 #include <SFML/Network/IpAddress.hpp>
 #include <SFML/System/Time.hpp>
 
+#include <chrono>
 #include <optional>
 
 namespace neoncoil::net
@@ -55,7 +56,7 @@ namespace neoncoil::net
             return false;
         }
 
-        m_socket = std::make_unique<sf::TcpSocket>();
+        m_socket = std::make_unique<GameSocket>();
         m_linkState.store(LinkState::Connecting);
 
         const float timeout = NetConfig::instance().connectTimeoutSeconds;
@@ -288,6 +289,7 @@ namespace neoncoil::net
         {
             joinConnectThread();
             m_socket->setBlocking(false);
+            m_socket->disableNagle();
             m_linkState.store(LinkState::Idle);
 
             // Registering is the first thing on the wire, so the relay can hand
@@ -397,7 +399,7 @@ namespace neoncoil::net
             return false;
         }
 
-        m_socket = std::make_unique<sf::TcpSocket>();
+        m_socket = std::make_unique<GameSocket>();
         m_linkState.store(LinkState::Connecting);
 
         const float timeout = NetConfig::instance().connectTimeoutSeconds;
@@ -582,6 +584,7 @@ namespace neoncoil::net
         {
             joinConnectThread();
             m_socket->setBlocking(false);
+            m_socket->disableNagle();
             m_linked = true;
             m_linkState.store(LinkState::Idle);
 
@@ -623,9 +626,12 @@ namespace neoncoil::net
     // ------------------------------------------------------------- listing --
 
     bool queryRelaySessions(const std::string& relayHost, std::uint16_t relayPort,
-        std::vector<SessionAdvert>& out, std::wstring& error, float timeoutSeconds)
+        std::vector<SessionAdvert>& out, std::wstring& error, float timeoutSeconds,
+        int* pingMs)
     {
         out.clear();
+        if (pingMs != nullptr)
+            *pingMs = -1;
 
         if (relayHost.empty())
         {
@@ -640,12 +646,18 @@ namespace neoncoil::net
             return false;
         }
 
-        sf::TcpSocket socket;
+        GameSocket socket;
         if (socket.connect(*resolved, relayPort, sf::seconds(timeoutSeconds)) != sf::Socket::Status::Done)
         {
             error = L"could not reach the relay";
             return false;
         }
+
+        socket.disableNagle();
+
+        // Timed from here: the socket is already up, so what is measured is one
+        // request and one answer -- a round trip, not a handshake.
+        const std::chrono::steady_clock::time_point asked = std::chrono::steady_clock::now();
 
         sf::Packet request = beginRelay(RelayMessage::ListSessions);
         if (socket.send(request) != sf::Socket::Status::Done)
@@ -662,6 +674,13 @@ namespace neoncoil::net
         {
             error = L"the relay did not answer";
             return false;
+        }
+
+        if (pingMs != nullptr)
+        {
+            const auto elapsed = std::chrono::steady_clock::now() - asked;
+            *pingMs = static_cast<int>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count());
         }
 
         RelayMessage id{};

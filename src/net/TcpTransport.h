@@ -1,5 +1,6 @@
 #pragma once
 
+#include "SocketOptions.h"
 #include "Transport.h"
 
 #include <SFML/Network/IpAddress.hpp>
@@ -54,7 +55,7 @@ namespace neoncoil::net
         struct Peer
         {
             PeerId id{ kInvalidPeer };
-            std::unique_ptr<sf::TcpSocket> socket;
+            std::unique_ptr<GameSocket> socket;
             std::deque<sf::Packet> outgoing;
 
             // Set when the peer is gone or being dropped. The peer is only
@@ -109,7 +110,7 @@ namespace neoncoil::net
             Failed
         };
 
-        std::unique_ptr<sf::TcpSocket> m_socket;
+        std::unique_ptr<GameSocket> m_socket;
         std::thread m_connectThread;
         std::atomic<ConnectState> m_connectState{ ConnectState::Idle };
         std::wstring m_failure;

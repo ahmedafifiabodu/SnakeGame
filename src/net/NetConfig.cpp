@@ -1,10 +1,12 @@
 #include "NetConfig.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace neoncoil::net
 {
@@ -23,6 +25,87 @@ namespace neoncoil::net
         {
             return value == "1" || value == "true" || value == "yes" || value == "on";
         }
+
+        std::wstring widen(const std::string& text)
+        {
+            std::wstring out;
+            out.reserve(text.size());
+            for (char c : text)
+                out.push_back(static_cast<wchar_t>(static_cast<unsigned char>(c)));
+            return out;
+        }
+
+        // `relay = M | MIDDLE EAST | 34.1.2.3 | 45700`
+        //
+        // Pipe-separated rather than four keys with a shared prefix, because a
+        // relay is one thing and splitting it across four lines invites a config
+        // where the third relay has a name and no address. Everything after the
+        // host is optional.
+        bool parseRelay(const std::string& value, RelayEndpoint& out)
+        {
+            std::vector<std::string> parts;
+            std::size_t start = 0;
+
+            for (;;)
+            {
+                const std::size_t bar = value.find('|', start);
+                parts.push_back(trim(value.substr(start,
+                    bar == std::string::npos ? std::string::npos : bar - start)));
+
+                if (bar == std::string::npos)
+                    break;
+                start = bar + 1;
+            }
+
+            // A bare `relay = 34.1.2.3` is legal and means an untagged relay,
+            // which is exactly what a single-relay build already had.
+            if (parts.size() == 1)
+            {
+                if (parts[0].empty())
+                    return false;
+                out.host = parts[0];
+                return true;
+            }
+
+            if (parts.size() < 3 || parts[2].empty())
+                return false;
+
+            if (!parts[0].empty())
+                out.regionTag = static_cast<wchar_t>(std::toupper(
+                    static_cast<unsigned char>(parts[0][0])));
+            if (!parts[1].empty())
+                out.name = widen(parts[1]);
+
+            out.host = parts[2];
+
+            if (parts.size() >= 4 && !parts[3].empty())
+                out.port = static_cast<std::uint16_t>(std::atoi(parts[3].c_str()));
+
+            return true;
+        }
+    }
+
+    int NetConfig::relayIndexForCode(const std::wstring& code) const
+    {
+        // Seven characters means the first one is a region tag; six is a code
+        // from an untagged relay, and predates regions existing at all.
+        if (code.size() != 7)
+            return -1;
+
+        for (std::size_t i = 0; i < relays.size(); ++i)
+            if (relays[i].regionTag != 0 && relays[i].regionTag == code[0])
+                return static_cast<int>(i);
+
+        return -1;
+    }
+
+    void NetConfig::selectRelay(int index)
+    {
+        if (index < 0 || index >= static_cast<int>(relays.size()))
+            return;
+
+        relayHost = relays[static_cast<std::size_t>(index)].host;
+        relayPort = relays[static_cast<std::size_t>(index)].port;
     }
 
     NetConfig& NetConfig::instance()
@@ -66,9 +149,18 @@ namespace neoncoil::net
             else if (key == "discovery_ttl")        discoveryTtlSeconds = asFloat();
             else if (key == "quick_match_search")   quickMatchSearchSeconds = asFloat();
             else if (key == "advertise_on_lan")     advertiseOnLan = asBool(value);
+            else if (key == "relay")
+            {
+                RelayEndpoint endpoint;
+                endpoint.port = relayPort;   // the file's relay_port is the default
+                if (parseRelay(value, endpoint))
+                    relays.push_back(std::move(endpoint));
+            }
             else if (key == "relay_host")           relayHost = value;
             else if (key == "relay_port")           relayPort = asPort();
             else if (key == "always_use_relay")     alwaysUseRelay = asBool(value);
+            else if (key == "relay_list_interval")  relayListIntervalSeconds = std::clamp(asFloat(), 1.0f, 30.0f);
+            else if (key == "relay_list_timeout")   relayListTimeoutSeconds = std::clamp(asFloat(), 0.5f, 10.0f);
             else if (key == "identity_file")        identityFile = value;
             else if (key == "match_duration")       rules.durationSeconds = asFloat();
             else if (key == "match_countdown")      rules.countdownSeconds = asFloat();
@@ -81,6 +173,23 @@ namespace neoncoil::net
             else if (key == "match_arena_level")    rules.arenaLevelIndex = std::max(1, asInt());
             else if (key == "match_max_length")     rules.maxLength = std::clamp(asInt(), 8, 200);
         }
+
+        // The single-relay keys still work, and mean "one relay, no region".
+        // Every build that shipped before regions existed uses them, and none of
+        // those config files should have to be rewritten to keep working.
+        if (relays.empty() && !relayHost.empty())
+        {
+            RelayEndpoint only;
+            only.host = relayHost;
+            only.port = relayPort;
+            relays.push_back(std::move(only));
+        }
+
+        // relayHost / relayPort are what a session actually dials, so they are
+        // left pointing at the first relay in the list -- the one the config
+        // author put at the top.
+        if (!relays.empty())
+            selectRelay(0);
 
         return true;
     }

@@ -92,7 +92,7 @@ namespace neoncoil::relay
         for (int attempt = 0; attempt < 64; ++attempt)
         {
             m_codeSeed = Rng::mix(m_codeSeed, static_cast<std::uint64_t>(attempt) + 1);
-            std::wstring code = net::makeRelayCode(m_codeSeed);
+            std::wstring code = net::makeRelayCode(m_codeSeed, m_regionTag);
 
             if (m_sessions.find(code) == m_sessions.end())
                 return code;
@@ -124,7 +124,7 @@ namespace neoncoil::relay
     {
         for (;;)
         {
-            auto socket = std::make_unique<sf::TcpSocket>();
+            auto socket = std::make_unique<net::GameSocket>();
             if (m_listener.accept(*socket) != sf::Socket::Status::Done)
                 return;
 
@@ -135,6 +135,11 @@ namespace neoncoil::relay
             }
 
             socket->setBlocking(false);
+
+            // The relay is the middle of the path, so both of its sockets carry
+            // the same penalty a game socket would: every frame it forwards is
+            // small and wanted now.
+            socket->disableNagle();
 
             auto connection = std::make_unique<Connection>();
             connection->id = m_nextConnectionId++;

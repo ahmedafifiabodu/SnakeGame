@@ -17,6 +17,22 @@ namespace neoncoil
         // players on a 56x32 board without an exhaustive search.
         constexpr int kSpawnCandidates = 48;
 
+        // Clear tiles a spawn wants straight ahead of it before the spot counts
+        // as a good one.
+        //
+        // A snake cannot stop, so the runway IS the reaction time: at the
+        // default tick of 0.14s a runway of six is about four fifths of a second
+        // to see the wall and turn. One tile -- which is all "the first move is
+        // legal" asks for -- is a single tick, and over a relay the turn does
+        // not even reach the host before the crash. That was the bug: players
+        // were respawned nose-first into geometry with nothing they could do
+        // about it.
+        constexpr int kDesiredRunway = 6;
+
+        // What a spawn will settle for when the board is too cramped for the
+        // full runway. Still three times the old floor of one.
+        constexpr int kMinimumRunway = 3;
+
         constexpr Direction kAllDirections[] = {
             Direction::Right, Direction::Left, Direction::Up, Direction::Down
         };
@@ -170,6 +186,51 @@ namespace neoncoil
 
     // ---------------------------------------------------------------- spawning --
 
+    bool MatchSimulation::spawnTileIsFree(Vec2 tile) const
+    {
+        return m_arena.inBounds(tile) && !m_arena.isWall(tile) &&
+            !occupiedByAnyone(tile) && !m_arena.hazardAt(tile);
+    }
+
+    int MatchSimulation::runwayAhead(Vec2 head, Direction facing) const
+    {
+        const Vec2 forward = toDelta(facing);
+
+        int clear = 0;
+        for (int i = 1; i <= kDesiredRunway; ++i)
+        {
+            if (!spawnTileIsFree(head + forward * i))
+                break;
+            ++clear;
+        }
+
+        return clear;
+    }
+
+    int MatchSimulation::escapesAhead(Vec2 head, Direction facing) const
+    {
+        // A long runway down a one-tile corridor is not really room to react:
+        // the only move it offers is "keep going". So the sideways exits over
+        // the first few tiles are counted too, and used to separate spots whose
+        // runways are the same length.
+        const Vec2 forward = toDelta(facing);
+        const Vec2 side{ forward.y, forward.x };   // perpendicular, either way
+
+        int escapes = 0;
+        for (int i = 1; i <= kMinimumRunway; ++i)
+        {
+            const Vec2 tile = head + forward * i;
+            if (!spawnTileIsFree(tile))
+                break;
+            if (spawnTileIsFree(tile + side))
+                ++escapes;
+            if (spawnTileIsFree(tile - side))
+                ++escapes;
+        }
+
+        return escapes;
+    }
+
     bool MatchSimulation::chooseSpawn(const Racer& racer, Vec2& head, Direction& direction)
     {
         const std::vector<Vec2>& open = m_arena.openTiles();
@@ -180,11 +241,11 @@ namespace neoncoil
 
         Vec2 bestHead{ 0, 0 };
         Direction bestDirection = Direction::Right;
-        int bestClearance = -1;
+        long long bestScore = -1;
 
         Vec2 fallbackHead{ 0, 0 };
         Direction fallbackDirection = Direction::Right;
-        bool haveFallback = false;
+        int fallbackRunway = 0;
 
         for (int attempt = 0; attempt < kSpawnCandidates; ++attempt)
         {
@@ -195,30 +256,36 @@ namespace neoncoil
             {
                 const Vec2 forward = toDelta(facing);
 
-                // The head, the whole body laid out behind it, and the tile
-                // directly ahead all have to be clear -- otherwise a player
-                // respawns already dead, which is the worst bug this mode could
-                // ship with.
+                // The head and the whole body laid out behind it have to be
+                // clear -- otherwise a player respawns already dead, which is
+                // the worst bug this mode could ship with.
                 bool viable = true;
-                for (int i = -1; i < length && viable; ++i)
-                {
-                    const Vec2 tile = candidate - forward * i;
-                    viable = m_arena.inBounds(tile) && !m_arena.isWall(tile) &&
-                        !occupiedByAnyone(tile) && !m_arena.hazardAt(tile);
-                }
+                for (int i = 0; i < length && viable; ++i)
+                    viable = spawnTileIsFree(candidate - forward * i);
 
                 if (!viable)
                     continue;
 
-                if (!haveFallback)
+                const int runway = runwayAhead(candidate, facing);
+                if (runway <= 0)
+                    continue;
+
+                // Anything with a tile ahead of it will do if the board leaves
+                // nothing better, but it is the last resort rather than the
+                // first acceptable answer -- and even here the longest runway
+                // seen so far wins.
+                if (runway > fallbackRunway)
                 {
                     fallbackHead = candidate;
                     fallbackDirection = facing;
-                    haveFallback = true;
+                    fallbackRunway = runway;
                 }
 
-                // Prefer the spot furthest from anybody else, so a respawn is
-                // not an instant re-death and players spread across the board.
+                if (runway < kMinimumRunway)
+                    continue;
+
+                // Distance to the nearest other head, so a respawn is not an
+                // instant re-death and players spread across the board.
                 int clearance = m_arena.width() + m_arena.height();
                 for (const Racer& other : m_racers)
                 {
@@ -227,23 +294,31 @@ namespace neoncoil
                     clearance = std::min(clearance, manhattan(candidate, other.body.head()));
                 }
 
-                if (clearance > bestClearance)
+                // Runway first, then room to turn out of it, then distance from
+                // everybody else. Ranked rather than added up on purpose: no
+                // amount of open board compensates for a wall two tiles in front
+                // of a snake that cannot stop.
+                const long long score = static_cast<long long>(runway) * 100000 +
+                    static_cast<long long>(escapesAhead(candidate, facing)) * 1000 +
+                    clearance;
+
+                if (score > bestScore)
                 {
-                    bestClearance = clearance;
+                    bestScore = score;
                     bestHead = candidate;
                     bestDirection = facing;
                 }
             }
         }
 
-        if (bestClearance >= 0)
+        if (bestScore >= 0)
         {
             head = bestHead;
             direction = bestDirection;
             return true;
         }
 
-        if (haveFallback)
+        if (fallbackRunway > 0)
         {
             head = fallbackHead;
             direction = fallbackDirection;
@@ -279,6 +354,8 @@ namespace neoncoil
 
     void MatchSimulation::update(float deltaSeconds)
     {
+        m_stepped = false;
+
         if (m_phase == MatchPhase::Finished)
             return;
 
@@ -333,6 +410,7 @@ namespace neoncoil
                 {
                     rebuildOccupancy();
                     spawn(racer);
+                    m_stepped = true;
                 }
                 continue;
             }
@@ -382,6 +460,7 @@ namespace neoncoil
                 racer.tickAccumulator -= tickSeconds;
                 stepRacer(racer);
                 rebuildOccupancy();
+                m_stepped = true;
             }
 
             if (racer.tickAccumulator > tickSeconds)

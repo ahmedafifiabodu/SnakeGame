@@ -198,6 +198,22 @@ namespace neoncoil
         screen.text(2, 0, L"CODE " + lobby.code, Color::Slate, Color::Transparent);
         screen.textCenteredIn(0, screen.width(), 0, clock, clockColour, Color::Transparent);
 
+        // The local player's own round trip, top right, where it is out of the
+        // way of the four player columns but never off screen. A host is the far
+        // end of everybody else's connection, so it says so rather than showing
+        // a zero that would read as a suspiciously good ping.
+        if (m_session->isHost())
+        {
+            screen.text(screen.width() - 8, 0, L"HOST", Color::Lime, Color::Transparent);
+        }
+        else
+        {
+            const int ping = m_session->pingMs();
+            const std::wstring text = L"PING " + ui::pingText(ping);
+            screen.text(screen.width() - static_cast<int>(text.size()) - 2, 0, text,
+                ui::pingColour(ping), Color::Transparent);
+        }
+
         // --- one column per seat ----------------------------------------------
         const int columns = std::max(1, static_cast<int>(lobby.maxPlayers));
         const int columnWidth = screen.width() / columns;
@@ -230,6 +246,17 @@ namespace neoncoil
             else
             {
                 screen.text(x, 1, name, accent, Color::Transparent);
+            }
+
+            // Every player's ping, next to their name. Seeing that the player
+            // who keeps cutting you off is 300 ms away explains a match in a way
+            // that seeing only your own number never does.
+            if (width > 6)
+            {
+                const int theirPing = seat.isHost ? 0 : static_cast<int>(seat.pingMs);
+                const std::wstring text = seat.isHost ? std::wstring(L"HOST") : ui::pingText(theirPing);
+                screen.text(x + width - static_cast<int>(text.size()), 1, text,
+                    seat.isHost ? Color::Slate : ui::pingColour(theirPing), Color::Transparent);
             }
 
             if (snake == nullptr)

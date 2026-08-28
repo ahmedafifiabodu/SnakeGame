@@ -28,6 +28,7 @@ namespace neoncoil
         // having two of them in scope here reads badly at every use site.
         enum class Choice
         {
+            Region,        // which relay to host through, and what it pings
             HostOnline,    // via the relay: reachable from anywhere, no setup
             HostLan,       // direct listen: same network only, no relay needed
             QuickMatch,
@@ -48,9 +49,18 @@ namespace neoncoil
         Transition host(AppContext& context, bool viaRelay);
         Transition join(AppContext& context, const std::string& address, std::uint16_t port);
         Transition joinByCode(AppContext& context, const std::wstring& code);
-        // Ids above the Choice range identify a discovered session by index.
+
+        // One entry in the browser, joined the way that entry is reachable: a
+        // local session by its address, an online one by its code. Everything
+        // that can pick a session out of the list goes through here, so the two
+        // kinds can never be confused for one another.
+        Transition joinDiscovered(AppContext& context, const net::DiscoveredSession& session);
+        // Ids above the Choice range identify a discovered session by index, or
+        // the two arrows either side of the region field.
         enum Hit : int
         {
+            HitRegionPrev = 200,
+            HitRegionNext,
             HitSession = 300
         };
 
@@ -63,9 +73,29 @@ namespace neoncoil
         void renderActions(AppContext& context) const;
         void renderSessions(AppContext& context) const;
 
+        // AUTO is m_region == kAutoRegion; anything else is an index into
+        // NetConfig::relays. Resolves to a concrete index, or -1 when nothing
+        // has answered yet.
+        int chosenRelay() const;
+        void cycleRegion(int direction);
+
+        // "MIDDLE EAST   24 MS", or what to say instead when it has not answered.
+        std::wstring regionLabel(int relayIndex) const;
+
+        // First row of the list that is on screen. The browser now carries
+        // online sessions as well as local ones, so it can hold more than the
+        // panel does and has to scroll to keep the selection in view.
+        int firstVisibleSession(int sessionCount, int rows) const;
+
         std::unique_ptr<net::IMatchmaker> m_matchmaker;
 
+        // -1 means AUTO: whichever relay is answering fastest right now. It is
+        // the default because it is the right answer for almost every player,
+        // and the picker exists for the ones it is not right for.
+        static constexpr int kAutoRegion = -1;
+
         Column m_column{ Column::Actions };
+        int m_region{ kAutoRegion };
         // onEnter picks the right default: HOST ONLINE when this build has a
         // relay, HOST ON THIS NETWORK when it does not.
         Choice m_choice{ Choice::HostLan };

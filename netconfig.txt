@@ -1,13 +1,38 @@
 # NEON COIL networking configuration.
 #
-# This ships beside the executable. It is what tells the game where the relay
-# lives, and it is the only reason HOST ONLINE works: with no relay configured,
+# This ships beside the executable. It is what tells the game where the relays
+# live, and it is the only reason HOST ONLINE works: with no relay configured,
 # the game can still host and join on a local network, but nothing else.
 #
 # Players are not expected to touch this file. Every key is optional and falls
 # back to a built-in default; see netconfig.example.txt for the full list.
 
-# The relay. Both the host and its guests dial OUT to this, which is why nobody
-# has to forward a port on their router.
-relay_host = 35.222.57.3
-relay_port = 45700
+# The relays, one line each.
+#
+#   relay = <tag> | <name> | <host> | <port>
+#
+# Both the host and its guests dial OUT to one of these, which is why nobody has
+# to forward a port on their router.
+#
+# The tag is one letter and must match the --region the relay process was started
+# with. It becomes the first character of every code that relay hands out, so a
+# guest typing a code is dialled to the right region without being told which one
+# it is. Avoid I, L and O -- codes get read aloud, and those are the ones people
+# mishear.
+#
+# The name is what the region picker shows, next to a live ping. Keep it short.
+#
+# Distance to the relay is the single largest source of lag in this game -- both
+# the input and the snapshot cross that gap -- so run one near each group of
+# players. The game measures all of them and picks the nearest on its own.
+#
+# Deploy each with tools/deploy_relay.sh, which prints the line to paste here.
+
+relay = U | US CENTRAL  | 35.222.57.3 | 45700
+
+# Uncomment as each region comes up.
+#
+# relay = E | EUROPE      | <ip> | 45700
+# relay = M | MIDDLE EAST | <ip> | 45700
+# relay = A | ASIA        | <ip> | 45700
+# relay = S | S AMERICA   | <ip> | 45700

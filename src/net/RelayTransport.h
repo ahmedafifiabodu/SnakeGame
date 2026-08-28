@@ -1,6 +1,7 @@
 #pragma once
 
 #include "RelayProtocol.h"
+#include "SocketOptions.h"
 #include "Transport.h"
 
 #include <SFML/Network/TcpSocket.hpp>
@@ -80,7 +81,7 @@ namespace neoncoil::net
         std::uint16_t m_relayPort{ 0 };
         SessionAdvert m_advert;
 
-        std::unique_ptr<sf::TcpSocket> m_socket;
+        std::unique_ptr<GameSocket> m_socket;
         std::thread m_connectThread;
         std::atomic<LinkState> m_linkState{ LinkState::Idle };
         std::wstring m_connectFailure;
@@ -137,7 +138,7 @@ namespace neoncoil::net
         std::uint16_t m_relayPort{ 0 };
         std::wstring m_code;
 
-        std::unique_ptr<sf::TcpSocket> m_socket;
+        std::unique_ptr<GameSocket> m_socket;
         std::thread m_connectThread;
         std::atomic<LinkState> m_linkState{ LinkState::Idle };
         std::wstring m_connectFailure;
@@ -149,9 +150,16 @@ namespace neoncoil::net
         bool m_joined{ false };   // relay has put us through to the host
     };
 
-    // Asks a relay what is open. One shot: connects, asks, reads, closes.
-    // Blocking with a short timeout, because it runs from a menu action rather
-    // than from the frame loop.
+    // Asks a relay what is open, and how far away it is. One shot: connects,
+    // asks, reads, closes. Blocking with a short timeout, because it runs from a
+    // menu action rather than from the frame loop.
+    //
+    // `pingMs`, when given, is filled with the time between the request going
+    // out and the answer coming back on an already-open socket -- one round trip
+    // to the relay, measured on traffic the browser was sending anyway. That is
+    // both cheaper and more honest than a separate ping message: it is the same
+    // path, on the same connection, that a game would use.
     bool queryRelaySessions(const std::string& relayHost, std::uint16_t relayPort,
-        std::vector<SessionAdvert>& out, std::wstring& error, float timeoutSeconds = 3.0f);
+        std::vector<SessionAdvert>& out, std::wstring& error, float timeoutSeconds = 3.0f,
+        int* pingMs = nullptr);
 }

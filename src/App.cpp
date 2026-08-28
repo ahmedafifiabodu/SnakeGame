@@ -129,7 +129,16 @@ namespace neoncoil
                 // host has their input in hand for the same frame it simulates.
                 // The state on top pumps the host session itself.
                 if (netDemo != nullptr)
+                {
                     netDemo->tick(kStep);
+
+                    // On the multiplayer menu nothing owns the demo host, so it
+                    // is pumped from here. Without that it never answers a
+                    // discovery probe and the browser it exists to fill stays
+                    // empty.
+                    if (which == "netmenu" && netDemo->host() != nullptr)
+                        netDemo->host()->update(kStep);
+                }
 
                 machine.update(context, kStep);
 
@@ -472,6 +481,17 @@ namespace neoncoil
 
         if (which == "netmenu")
         {
+            // A real session on a real socket, purely so the browser has
+            // something to find. The open-sessions panel is half this screen,
+            // and a capture of it empty shows the half that does not matter.
+            // Failing to open one is not fatal: the screen is still the screen.
+            if (netDemo != nullptr)
+            {
+                std::wstring demoError;
+                if (!netDemo->start(1, false, demoError))
+                    std::wcerr << L"could not open a demo session to browse: " << demoError << L"\n";
+            }
+
             machine.apply(Transition::reset(std::make_unique<MultiplayerMenuState>()), context);
             return true;
         }

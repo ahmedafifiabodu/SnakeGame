@@ -79,6 +79,24 @@ namespace neoncoil::net
             return false;
         }
 
+        // The code says which relay minted it, so a guest never has to be told
+        // the region alongside it. An untagged code -- six characters, from a
+        // relay running without --region -- falls back to whichever relay the
+        // player currently has selected, which is what a single-relay build has
+        // always done.
+        m_relayIndex = m_config.relayIndexForCode(normalised);
+        if (m_relayIndex >= 0)
+        {
+            m_config.selectRelay(m_relayIndex);
+        }
+        else if (normalised.size() == 7 && m_config.relays.size() > 1)
+        {
+            error = L"that code is from a region this build does not know";
+            m_phase = SessionPhase::Disconnected;
+            m_status = error;
+            return false;
+        }
+
         m_identity.setDisplayName(displayName);
         m_colourIndex = colourIndex;
         m_typeIndex = typeIndex;
@@ -178,6 +196,11 @@ namespace neoncoil::net
         sf::Packet packet = beginClient(ClientMessage::Input);
         packet << stamped;
         m_transport->send(std::move(packet));
+        // Flushed here rather than waiting for the next frame's pump. Input
+        // arrives from the screen AFTER update() has run, so leaving it queued
+        // would put a frame between the key going down and the packet leaving --
+        // the one delay in the whole path that costs nothing to remove.
+        m_transport->pump();
     }
 
     void ClientSession::returnToLobby()
@@ -301,7 +324,27 @@ namespace neoncoil::net
         }
 
         case ServerMessage::Heartbeat:
+        {
+            Heartbeat beat;
+            packet >> beat;
+
+            // Only the echo of the nonce still outstanding counts. Anything else
+            // is an older heartbeat arriving late, and timing against it would
+            // report a round trip that no packet actually took.
+            if (!packet || !m_heartbeatPending || beat.nonce != m_heartbeatNonce)
+                break;
+
+            m_heartbeatPending = false;
+
+            const auto elapsed = std::chrono::steady_clock::now() - m_heartbeatSentAt;
+            const int sample = static_cast<int>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count());
+
+            // First sample lands whole; after that a quarter of each new one, so
+            // the number settles quickly but stops twitching.
+            m_pingMs = m_pingMs < 0 ? sample : (m_pingMs * 3 + sample) / 4;
             break;
+        }
         }
     }
 
@@ -362,7 +405,29 @@ namespace neoncoil::net
         if (m_heartbeatTimer <= 0.0f)
         {
             m_heartbeatTimer = 1.0f / std::max(0.1f, m_config.heartbeatHz);
-            m_transport->send(beginClient(ClientMessage::Heartbeat));
+
+            Heartbeat beat;
+            beat.nonce = ++m_heartbeatNonce;
+            // Last measurement, not this one -- this one has not come back yet.
+            // The host puts it in the lobby so the other players can see it.
+            beat.reportedPingMs = static_cast<std::uint16_t>(std::clamp(m_pingMs, 0, 9999));
+
+            sf::Packet packet = beginClient(ClientMessage::Heartbeat);
+            packet << beat;
+            m_transport->send(std::move(packet));
+
+            m_heartbeatSentAt = std::chrono::steady_clock::now();
+            m_heartbeatPending = true;
         }
+
+        // Pumped again at the end, not only at the start.
+        //
+        // Everything queued above -- the hello, the heartbeat, the ready flag --
+        // was written after this frame's pump, so with a single pump per frame
+        // it would have sat in the outgoing queue until the next one. That is a
+        // whole frame of delay added to every message the client sends, for no
+        // reason other than the order the function happens to be written in.
+        // A second pump costs one non-blocking send and one non-blocking read.
+        m_transport->pump();
     }
 }

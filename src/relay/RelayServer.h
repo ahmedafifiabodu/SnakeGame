@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../net/RelayProtocol.h"
+#include "../net/SocketOptions.h"
 
 #include <SFML/Network/TcpListener.hpp>
 #include <SFML/Network/TcpSocket.hpp>
@@ -62,11 +63,18 @@ namespace neoncoil::relay
 
         void setVerbose(bool verbose) { m_verbose = verbose; }
 
+        // One letter, stamped on the front of every code this relay hands out,
+        // so a guest typing that code can be dialled to this relay rather than
+        // to whichever one their build happens to list first. Set it per
+        // deployment -- 'M' for the Middle East box, 'E' for the European one.
+        void setRegionTag(wchar_t tag) { m_regionTag = tag; }
+        wchar_t regionTag() const { return m_regionTag; }
+
     private:
         struct Connection
         {
             std::uint32_t id{ 0 };
-            std::unique_ptr<sf::TcpSocket> socket;
+            std::unique_ptr<net::GameSocket> socket;
             std::deque<sf::Packet> outgoing;
             bool dead{ false };
 
@@ -124,6 +132,7 @@ namespace neoncoil::relay
         std::uint32_t m_nextConnectionId{ 1 };
         std::uint64_t m_codeSeed{ 0 };
         float m_idleTimeout{ 300.0f };
+        wchar_t m_regionTag{ 0 };
 
         RelayStats m_stats;
     };

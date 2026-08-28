@@ -23,4 +23,24 @@ namespace neoncoil::ui
                 return static_cast<int>(i);
         return 0;
     }
+
+    Color pingColour(int milliseconds)
+    {
+        if (milliseconds < 0)
+            return Color::Slate;
+        if (milliseconds < 60)
+            return Color::Lime;      // under half a step: unnoticeable
+        if (milliseconds < 120)
+            return Color::Gold;      // about one step
+        if (milliseconds < 220)
+            return Color::Amber;
+        return Color::Red;           // nearly two steps behind the host
+    }
+
+    std::wstring pingText(int milliseconds)
+    {
+        if (milliseconds < 0)
+            return L"--";
+        return std::to_wstring(milliseconds) + L" ms";
+    }
 }

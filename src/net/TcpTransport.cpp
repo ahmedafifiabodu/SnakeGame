@@ -142,11 +142,12 @@ namespace neoncoil::net
         // --- accept -----------------------------------------------------------
         for (;;)
         {
-            auto socket = std::make_unique<sf::TcpSocket>();
+            auto socket = std::make_unique<GameSocket>();
             if (m_listener.accept(*socket) != sf::Socket::Status::Done)
                 break;
 
             socket->setBlocking(false);
+            socket->disableNagle();
 
             auto peer = std::make_unique<Peer>();
             peer->id = m_nextPeerId++;
@@ -249,7 +250,7 @@ namespace neoncoil::net
             return false;
         }
 
-        m_socket = std::make_unique<sf::TcpSocket>();
+        m_socket = std::make_unique<GameSocket>();
         m_failure.clear();
         m_connectState.store(ConnectState::Pending);
 
@@ -325,6 +326,7 @@ namespace neoncoil::net
         {
             joinConnectThread();
             m_socket->setBlocking(false);
+            m_socket->disableNagle();
             m_connected = true;
             m_connectState.store(ConnectState::Idle);
 

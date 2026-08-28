@@ -21,12 +21,12 @@ namespace neoncoil
         constexpr int kActionsX = 8;
         constexpr int kActionsY = 12;
         constexpr int kActionsW = 46;
-        constexpr int kActionsH = 20;
+        constexpr int kActionsH = 23;
 
         constexpr int kSessionsX = 60;
         constexpr int kSessionsY = 12;
         constexpr int kSessionsW = 52;
-        constexpr int kSessionsH = 20;
+        constexpr int kSessionsH = 23;
 
         constexpr int kMaxAddressLength = 30;
         constexpr int kMaxCodeLength = 8;
@@ -77,6 +77,58 @@ namespace neoncoil
         }
     }
 
+    int MultiplayerMenuState::chosenRelay() const
+    {
+        if (m_region != kAutoRegion)
+            return m_region;
+
+        // AUTO is resolved from live pings, so it follows the network rather
+        // than a guess made when the menu opened. Before anything has answered
+        // it falls back to the first configured relay -- the one whoever wrote
+        // netconfig.txt put at the top.
+        const int fastest = m_matchmaker->fastestRelay();
+        if (fastest >= 0)
+            return fastest;
+
+        return net::NetConfig::instance().haveRelays() ? 0 : -1;
+    }
+
+    void MultiplayerMenuState::cycleRegion(int direction)
+    {
+        const int count = static_cast<int>(net::NetConfig::instance().relays.size());
+        if (count <= 0)
+            return;
+
+        // AUTO sits at the front of the ring, so one press from it reaches the
+        // first region and one press back reaches the last.
+        const int current = m_region == kAutoRegion ? 0 : m_region + 1;
+        const int next = wrapIndex(current + direction, count + 1);
+
+        m_region = next == 0 ? kAutoRegion : next - 1;
+    }
+
+    std::wstring MultiplayerMenuState::regionLabel(int relayIndex) const
+    {
+        const net::NetConfig& config = net::NetConfig::instance();
+        if (relayIndex < 0 || relayIndex >= static_cast<int>(config.relays.size()))
+            return L"NONE";
+
+        std::wstring label = config.relays[static_cast<std::size_t>(relayIndex)].name;
+
+        for (const net::RelayStatus& status : m_matchmaker->relayStatuses())
+        {
+            if (status.index != relayIndex)
+                continue;
+
+            if (!status.reachable && status.pingMs < 0)
+                return label + L"  --";
+
+            return label + L"  " + std::to_wstring(std::max(0, status.pingMs)) + L" MS";
+        }
+
+        return label;
+    }
+
     void MultiplayerMenuState::onEnter(AppContext& context)
     {
         context.input.flush();
@@ -87,6 +139,7 @@ namespace neoncoil
 
         m_column = Column::Actions;
         m_choice = net::NetConfig::instance().relayConfigured() ? Choice::HostOnline : Choice::HostLan;
+        m_region = kAutoRegion;
         m_sessionSelection = 0;
         m_searching = false;
         m_elapsed = 0.0f;
@@ -114,7 +167,33 @@ namespace neoncoil
             return Transition::none();
         }
 
-        auto session = std::make_unique<net::HostSession>(config, net::identityProvider());
+        // always_use_relay is a testing and deployment switch: it makes even a
+        // local session take the relay path, which is how the relayed code gets
+        // exercised without two machines on two networks.
+        if (!viaRelay && config.alwaysUseRelay && config.relayConfigured())
+        {
+            viaRelay = true;
+            m_message = L"Hosting through the relay -- always_use_relay is on";
+        }
+
+        // The region choice is applied to the copy the session takes, which is
+        // the whole mechanism: nothing below this line knows a list of relays
+        // exists, it just dials the one it was handed.
+        net::NetConfig chosen = config;
+        if (viaRelay)
+        {
+            const int index = chosenRelay();
+            if (index < 0)
+            {
+                m_message = L"No relay has answered yet -- host on this network instead";
+                return Transition::none();
+            }
+
+            chosen.selectRelay(index);
+            m_message = L"Hosting in " + regionLabel(index);
+        }
+
+        auto session = std::make_unique<net::HostSession>(chosen, net::identityProvider());
 
         std::wstring error;
         if (!session->open(context.profile.name,
@@ -165,6 +244,21 @@ namespace neoncoil
         return Transition::push(std::make_unique<LobbyState>(std::move(session)));
     }
 
+    Transition MultiplayerMenuState::joinDiscovered(AppContext& context, const net::DiscoveredSession& session)
+    {
+        // A relayed session has no address worth dialling -- its code IS its
+        // address -- so it is joined the same way a typed code is, and the
+        // player never has to know which of the two they picked.
+        if (!session.viaRelay)
+            return join(context, session.address, session.advert.port);
+
+        // Found through a particular relay, so joined through that one --
+        // whatever region is currently selected for hosting. The code carries
+        // the same answer, but the browser already knows it for certain.
+        net::NetConfig::instance().selectRelay(session.relayIndex);
+        return joinByCode(context, session.advert.code);
+    }
+
     Transition MultiplayerMenuState::takeQuickMatchDecision(AppContext& context)
     {
         m_searching = false;
@@ -176,10 +270,10 @@ namespace neoncoil
         if (const net::DiscoveredSession* best = m_matchmaker->bestJoinable(); best != nullptr)
         {
             m_message = L"Joining " + best->advert.hostName + L"'s session";
-            return join(context, best->address, best->advert.port);
+            return joinDiscovered(context, *best);
         }
 
-        // Nothing on this network. If there is a relay, become a session anyone
+        // Nothing open anywhere. If there is a relay, become a session anyone
         // can reach rather than one only this network can see.
         const bool viaRelay = net::NetConfig::instance().relayConfigured();
         m_message = viaRelay ? L"No session found -- hosting an online one instead"
@@ -206,11 +300,15 @@ namespace neoncoil
                 return Transition::none();
             }
 
-            return join(context, chosen.address, chosen.advert.port);
+            return joinDiscovered(context, chosen);
         }
 
         switch (m_choice)
         {
+        case Choice::Region:
+            cycleRegion(1);
+            return Transition::none();
+
         case Choice::HostOnline:
             return host(context, true);
 
@@ -343,10 +441,22 @@ namespace neoncoil
         if (editing)
             handleAddressEntry(context);
 
-        if (left)
-            m_column = Column::Actions;
-        if (right && !m_matchmaker->sessions().empty())
-            m_column = Column::Sessions;
+        // On the region row the arrows change the region; everywhere else they
+        // move between the two panels. A row that is a horizontal chooser has to
+        // own the horizontal keys or it cannot be operated.
+        const bool onRegion = m_column == Column::Actions && m_choice == Choice::Region;
+
+        if (onRegion && (left || right))
+        {
+            cycleRegion(right ? 1 : -1);
+        }
+        else
+        {
+            if (left)
+                m_column = Column::Actions;
+            if (right && !m_matchmaker->sessions().empty())
+                m_column = Column::Sessions;
+        }
 
         const int sessionCount = static_cast<int>(m_matchmaker->sessions().size());
 
@@ -388,6 +498,11 @@ namespace neoncoil
 
         const auto focus = [&](int id)
         {
+            // The arrows are hovered, not focused: pointing at one should not
+            // move the cursor off the row it belongs to.
+            if (id == HitRegionPrev || id == HitRegionNext)
+                return;
+
             if (id >= HitSession)
             {
                 m_column = Column::Sessions;
@@ -409,6 +524,14 @@ namespace neoncoil
         const int clicked = m_hits.clicked(input);
         if (clicked == ui::HitMap::kNone)
             return Transition::none();
+
+        if (clicked == HitRegionPrev || clicked == HitRegionNext)
+        {
+            m_column = Column::Actions;
+            m_choice = Choice::Region;
+            cycleRegion(clicked == HitRegionNext ? 1 : -1);
+            return Transition::none();
+        }
 
         focus(clicked);
 
@@ -530,26 +653,79 @@ namespace neoncoil
                 screen.text(inner, y + 2, ui::truncateTo(hint, width), Color::Slate, Color::Black);
         };
 
+        // Region first, because it decides how the two host buttons under it
+        // will feel. A player who never touches it gets AUTO, which is the right
+        // answer for them; a player on a bad route to the nearest relay can see
+        // that in the numbers and pick another.
+        const auto regionRow = [&](int y)
+        {
+            const bool focused = columnFocused && m_choice == Choice::Region;
+            const int resolved = chosenRelay();
+
+            screen.text(inner, y, L"REGION", focused ? Color::Gold : Color::Silver, Color::Black);
+
+            const std::wstring value = m_region == kAutoRegion
+                ? (resolved >= 0 ? L"AUTO -- " + regionLabel(resolved) : std::wstring(L"AUTO"))
+                : regionLabel(m_region);
+
+            const Color background = focused ? Color::Aqua : Color::Slate.scaled(0.5f);
+            const Color foreground = focused ? Color::Black : Color::Silver;
+
+            screen.fillRect(inner, y + 1, width, 1, glyph::Space, foreground, background);
+            screen.textCenteredIn(inner, width, y + 1, ui::truncateTo(value, width - 4),
+                foreground, background);
+
+            // Arrows are hit targets of their own, so the region can be changed
+            // with the mouse without first selecting the row.
+            screen.put(inner, y + 1, glyph::TriLeft, focused ? Color::Black : Color::Gold, background);
+            screen.put(inner + width - 1, y + 1, glyph::TriRight,
+                focused ? Color::Black : Color::Gold, background);
+
+            m_hits.add(static_cast<int>(Choice::Region), inner, y, width, 2);
+            m_hits.add(HitRegionPrev, inner, y + 1, 2, 1);
+            m_hits.add(HitRegionNext, inner + width - 2, y + 1, 2, 1);
+
+            if (!haveRelay)
+                screen.text(inner, y + 2, L"No relay in this build.", Color::Slate, Color::Black);
+            else
+                screen.text(inner, y + 2, L"Lower ms is closer. AUTO picks it.", Color::Slate, Color::Black);
+        };
+
+        regionRow(kActionsY + 1);
+
         // Online first, because it is the one that works for everybody without
         // anyone touching a router.
-        button(kActionsY + 1, Choice::HostOnline, L"HOST ONLINE",
+        button(kActionsY + 4, Choice::HostOnline, L"HOST ONLINE",
             haveRelay ? L"Anyone, anywhere. No setup."
                       : L"No relay in this build.", haveRelay);
 
-        button(kActionsY + 4, Choice::HostLan, L"HOST ON THIS NETWORK",
+        button(kActionsY + 7, Choice::HostLan, L"HOST ON THIS NETWORK",
             L"Same wifi only. Needs no relay.");
 
-        button(kActionsY + 7, Choice::QuickMatch, L"QUICK MATCH",
+        button(kActionsY + 10, Choice::QuickMatch, L"QUICK MATCH",
             L"Join one, or host if none exists.");
 
-        field(kActionsY + 10, Choice::Code, L"SESSION CODE", m_code,
-            L"Six letters from the host.");
-        button(kActionsY + 12, Choice::JoinCode, L"JOIN BY CODE", L"");
+        field(kActionsY + 13, Choice::Code, L"SESSION CODE", m_code,
+            L"The code the host gave you.");
+        button(kActionsY + 15, Choice::JoinCode, L"JOIN BY CODE", L"");
 
-        field(kActionsY + 14, Choice::Address, L"ADDRESS", m_address, L"");
-        button(kActionsY + 16, Choice::JoinAddress, L"JOIN BY ADDRESS", L"");
+        field(kActionsY + 17, Choice::Address, L"ADDRESS", m_address, L"");
+        button(kActionsY + 19, Choice::JoinAddress, L"JOIN BY ADDRESS", L"");
 
-        button(kActionsY + 18, Choice::Back, L"BACK", L"");
+        button(kActionsY + 21, Choice::Back, L"BACK", L"");
+    }
+
+    int MultiplayerMenuState::firstVisibleSession(int sessionCount, int rows) const
+    {
+        if (sessionCount <= rows)
+            return 0;
+
+        // Keep the selection near the middle of the window rather than only
+        // nudging the view when it would fall off an edge. Edge-following needs
+        // to remember which way the cursor was travelling to look right, and a
+        // renderer is the wrong place to keep that; centring needs no memory and
+        // scrolls one row per keypress in both directions.
+        return std::clamp(m_sessionSelection - rows / 2, 0, sessionCount - rows);
     }
 
     void MultiplayerMenuState::renderSessions(AppContext& context) const
@@ -559,12 +735,14 @@ namespace neoncoil
 
         screen.panel(kSessionsX, kSessionsY, kSessionsW, kSessionsH,
             columnFocused ? Color::Gold : Color::Slate, Color::Black);
-        screen.text(kSessionsX + 3, kSessionsY, L" SESSIONS NEARBY ", Color::Gold, Color::Black);
+        screen.text(kSessionsX + 3, kSessionsY, L" OPEN SESSIONS ", Color::Gold, Color::Black);
 
         const int inner = kSessionsX + 3;
         const int width = kSessionsW - 6;
 
-        screen.text(inner, kSessionsY + 2, L"VIA " + std::wstring(m_matchmaker->backendName()) + L" DISCOVERY",
+        const bool haveRelay = net::NetConfig::instance().relayConfigured();
+        screen.text(inner, kSessionsY + 2,
+            haveRelay ? L"ON THIS NETWORK AND ONLINE" : L"ON THIS NETWORK",
             Color::Slate, Color::Black);
         screen.horizontalLine(inner, kSessionsY + 3, width, glyph::ThinH, Color::Slate, Color::Black);
 
@@ -575,22 +753,30 @@ namespace neoncoil
             const int dots = static_cast<int>(m_elapsed * 3.0f) % 4;
             screen.text(inner, kSessionsY + 5,
                 L"Looking" + std::wstring(static_cast<std::size_t>(dots), L'.'), Color::Slate, Color::Black);
-            screen.text(inner, kSessionsY + 7, L"Nothing on this network yet.", Color::Slate, Color::Black);
-            screen.text(inner, kSessionsY + 9, L"Host one, or join by address.", Color::Slate, Color::Black);
+            screen.text(inner, kSessionsY + 7,
+                haveRelay ? L"Nothing open here or online yet."
+                          : L"Nothing on this network yet.",
+                Color::Slate, Color::Black);
+            screen.text(inner, kSessionsY + 9, L"Host one, or join by code.", Color::Slate, Color::Black);
             return;
         }
 
+        // Two rows per entry plus a blank one, inside the panel's own border.
+        const int rows = (kSessionsH - 6) / 3;
+        const int first = firstVisibleSession(static_cast<int>(sessions.size()), rows);
+        const int lastShown = std::min(static_cast<int>(sessions.size()), first + rows);
+
         int y = kSessionsY + 5;
-        for (std::size_t i = 0; i < sessions.size() && y < kSessionsY + kSessionsH - 2; ++i, y += 3)
+        for (int i = first; i < lastShown; ++i, y += 3)
         {
-            const net::DiscoveredSession& session = sessions[i];
-            const bool selected = columnFocused && static_cast<int>(i) == m_sessionSelection;
+            const net::DiscoveredSession& session = sessions[static_cast<std::size_t>(i)];
+            const bool selected = columnFocused && i == m_sessionSelection;
 
             const Color background = selected ? Color::Aqua : Color::Black;
             const Color foreground = selected ? Color::Black : Color::White;
 
             screen.fillRect(inner, y, width, 1, glyph::Space, foreground, background);
-            m_hits.add(HitSession + static_cast<int>(i), inner, y, width, 2);
+            m_hits.add(HitSession + i, inner, y, width, 2);
             screen.text(inner + 1, y, padded(session.advert.hostName, 14), foreground, background);
             screen.text(inner + 16, y, session.advert.code, selected ? Color::Black : Color::Gold, background);
 
@@ -604,10 +790,33 @@ namespace neoncoil
                 : (session.joinable() ? Color::Lime : Color::Red);
 
             screen.text(inner + 1, y + 1, state, stateColour, Color::Black);
-            screen.text(inner + 10, y + 1, ui::toWide(session.address), Color::Slate, Color::Black);
+
+            // Which of the two a session is matters to a player -- an online one
+            // will always be the slower of the two -- so it is labelled rather
+            // than left to be inferred from whether an address is shown.
+            screen.text(inner + 9, y + 1, session.viaRelay ? L"ONLINE" : L"LOCAL",
+                session.viaRelay ? Color::Aqua : Color::Lime, Color::Black);
+
+            // An online row says which region it is in and what that region
+            // pings, because that number is the difference between a session
+            // worth joining and one that will feel awful.
+            const std::wstring detail = session.viaRelay
+                ? regionLabel(session.relayIndex)
+                : session.where();
+
+            screen.text(inner + 17, y + 1, ui::truncateTo(detail, width - 18),
+                Color::Slate, Color::Black);
 
             if (selected)
                 screen.put(inner - 2, y, glyph::TriRight, Color::Gold, Color::Transparent);
+        }
+
+        if (lastShown < static_cast<int>(sessions.size()) || first > 0)
+        {
+            const int hidden = static_cast<int>(sessions.size()) - (lastShown - first);
+            screen.text(inner, kSessionsY + kSessionsH - 2,
+                std::to_wstring(hidden) + L" more -- scroll with UP/DOWN",
+                Color::Slate, Color::Black);
         }
     }
 }
