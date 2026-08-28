@@ -33,6 +33,17 @@ REPO=""
 PORT=45700
 MACHINE="e2-micro"
 
+# SFML 3.1 asks for CMake 3.28. Debian 12 ships 3.25, so the distro package is
+# not enough and the build dies at configure time with
+#
+#   CMake Error at build/_deps/sfml-src/CMakeLists.txt:1 (cmake_minimum_required):
+#     CMake 3.28 or higher is required.  You are running version 3.25.1
+#
+# Kitware's own binary tarball is used rather than a newer base image or a
+# third-party apt repo: it is one file, it pins exactly, and it does not change
+# under the deployment when Debian moves.
+CMAKE_VERSION="3.31.6"
+
 usage()
 {
     cat <<'USAGE'
@@ -128,7 +139,16 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends build-essential cmake ninja-build git ca-certificates
+apt-get install -y --no-install-recommends build-essential ninja-build git ca-certificates curl
+
+# Deliberately not the distro's cmake -- see the note beside CMAKE_VERSION.
+if [ ! -x /opt/cmake/bin/cmake ]; then
+    mkdir -p /opt/cmake
+    curl -fsSL "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz" \
+        | tar -xz --strip-components=1 -C /opt/cmake
+fi
+export PATH="/opt/cmake/bin:\$PATH"
+cmake --version
 
 # e2-micro has 1 GB of RAM and the SFML build will be killed part-way through
 # without this, with no message that says so.
