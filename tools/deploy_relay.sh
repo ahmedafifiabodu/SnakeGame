@@ -196,8 +196,19 @@ STARTUP_SCRIPT
 # Since a relay does not care which zone it lives in, the script tries them all
 # rather than making a person re-run it with a different letter.
 #
-# The address is reserved per REGION, so every zone below reuses the same one.
-ZONES="$(gcloud compute zones list --filter="region:(${REGION})" --format='value(name)' | sort)"
+# The address is reserved per REGION, so every zone below reuses the same one --
+# which is exactly why the filter here has to be exact.
+#
+# `--filter="region:(europe-west1)"` prefix-matches europe-west10 as well, so a
+# deploy to Belgium would try Amsterdam and fail with
+#
+#   The specified external IP address '...' was not found in region 'europe-west10'
+#
+# which names the wrong region and reads like a GCP fault rather than a bad
+# filter. gcloud also warns that the `region:` operator is changing and will
+# stop matching this way. Zone names are always <region>-<letter>, so an
+# anchored name match is both exact today and stable later.
+ZONES="$(gcloud compute zones list --filter="name~^${REGION}-" --format='value(name)' | sort)"
 
 if [ -z "$ZONES" ]; then
     echo "no zones found in $REGION -- is the region name right, and the Compute API enabled?" >&2
