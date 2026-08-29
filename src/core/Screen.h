@@ -137,6 +137,13 @@ namespace neoncoil
         // Maps a window pixel onto the virtual canvas and hands it to Input.
         void setMouseFromPixel(Input& input, sf::Vector2i pixel);
 
+        // Draws the pointer onto the canvas itself. Exclusive fullscreen takes
+        // the display away from the desktop compositor, and the compositor is
+        // what paints the OS cursor -- so in that mode the hardware pointer is
+        // simply not on screen no matter what setMouseCursorVisible says. The
+        // only pointer that can exist there is one the game draws.
+        void drawSoftwareCursor(sf::RenderTarget& target);
+
         void buildTargets(const std::wstring& title, bool windowed);
         void appendQuad(sf::VertexArray& batch, float x, float y, float w, float h,
             const sf::FloatRect& texRect, Color colour);
@@ -151,6 +158,7 @@ namespace neoncoil
 
         std::unique_ptr<sf::RenderWindow> m_window;
         DisplayMode m_displayMode{ DisplayMode::Windowed };
+        bool m_softwareCursor{ false };   // true whenever the OS one cannot show
         bool m_vsync{ true };
         std::unique_ptr<sf::RenderTexture> m_target;   // always present; the canvas
         bool m_offscreen{ false };

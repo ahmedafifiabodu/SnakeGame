@@ -7,10 +7,12 @@
 #include <SFML/Graphics/RenderStates.hpp>
 #include <SFML/Graphics/Sprite.hpp>
 #include <SFML/Window/Event.hpp>
+#include <SFML/Window/Mouse.hpp>
 #include <SFML/Window/VideoMode.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 
 namespace neoncoil
 {
@@ -147,12 +149,14 @@ namespace neoncoil
         m_window->setVerticalSyncEnabled(m_vsync);
         m_window->setKeyRepeatEnabled(true);
 
-        // Explicit, because this game is played with the mouse as much as the
-        // keyboard -- every menu says CLICK ANYTHING. A window created
-        // fullscreen or borderless does not reliably inherit the cursor state of
-        // the one it replaced, and a menu you cannot see the pointer on is not a
-        // menu you can use.
-        m_window->setMouseCursorVisible(true);
+        // Exclusive fullscreen owns the display outright, which takes it away
+        // from the desktop compositor -- and the compositor is what paints the
+        // OS pointer. There is therefore no cursor to make visible in that
+        // mode, whatever setMouseCursorVisible is told; the game has to draw
+        // its own. Windowed and borderless keep the real pointer, which is
+        // what a player expects there.
+        m_softwareCursor = m_displayMode == DisplayMode::Fullscreen;
+        m_window->setMouseCursorVisible(!m_softwareCursor);
     }
 
     void Screen::setVerticalSync(bool enabled)
@@ -198,7 +202,6 @@ namespace neoncoil
                 setMouseFromPixel(input, pressed->position);
             else if (const auto* released = event->getIf<sf::Event::MouseButtonReleased>())
                 setMouseFromPixel(input, released->position);
-
             input.handleEvent(*event);
         }
 
@@ -547,16 +550,76 @@ namespace neoncoil
         m_window->setView(view);
     }
 
+    void Screen::drawSoftwareCursor(sf::RenderTarget& target)
+    {
+        if (!m_window || !m_window->hasFocus())
+            return;
+
+        // Read the pointer directly rather than tracking the last mouse event:
+        // the cursor has to be in the right place on the very first frame after
+        // the switch to fullscreen, before the player has moved the mouse at
+        // all, and the letterboxed view is what makes this correct on any
+        // aspect ratio.
+        const sf::Vector2f p = m_window->mapPixelToCoords(sf::Mouse::getPosition(*m_window));
+        if (p.x < 0.0f || p.y < 0.0f || p.x > canvasWidth() || p.y > canvasHeight())
+            return;
+
+        // A plain arrow, as a triangle fan from the tip. Every point is an
+        // offset from the hotspot, so the tip lands exactly on the pointer.
+        static constexpr sf::Vector2f kOutline[] = {
+            { 0.0f, 0.0f }, { 0.0f, 17.0f }, { 4.5f, 13.0f }, { 7.0f, 19.5f },
+            { 10.0f, 18.0f }, { 7.5f, 12.0f }, { 12.5f, 12.0f }
+        };
+        constexpr std::size_t kPoints = std::size(kOutline);
+
+        // The fill is the same shape pulled in towards the tip, which leaves an
+        // even dark rim behind it. Without that rim a white arrow vanishes over
+        // the bright parts of the board.
+        constexpr float kFillScale = 0.78f;
+
+        sf::VertexArray arrow(sf::PrimitiveType::Triangles);
+        const sf::Vector2f texel{
+            m_solidRect.position.x + m_solidRect.size.x * 0.5f,
+            m_solidRect.position.y + m_solidRect.size.y * 0.5f };
+
+        const auto appendFan = [&](float scale, Color colour) {
+            const sf::Color tint = toSfml(colour);
+            for (std::size_t i = 1; i + 1 < kPoints; ++i)
+            {
+                arrow.append(sf::Vertex{ p, tint, texel });
+                arrow.append(sf::Vertex{ p + kOutline[i] * scale, tint, texel });
+                arrow.append(sf::Vertex{ p + kOutline[i + 1] * scale, tint, texel });
+            }
+        };
+
+        appendFan(1.0f, Color::Black);
+        appendFan(kFillScale, Color::White);
+
+        sf::RenderStates states;
+        states.texture = &m_atlas.texture();
+        target.draw(arrow, states);
+    }
+
     void Screen::present()
     {
+        // The view has to be current before the cursor is mapped, so the
+        // letterbox is applied first rather than after the canvas is drawn.
+        if (m_window)
+            applyLetterbox();
+
         m_target->clear(toSfml(m_clearColour));
         flushBatches(*m_target);
+
+        // Drawn onto the canvas, so it is letterboxed and scaled with
+        // everything else and cannot land in the black bars.
+        if (m_softwareCursor)
+            drawSoftwareCursor(*m_target);
+
         m_target->display();
 
         if (!m_window)
             return;
 
-        applyLetterbox();
         m_window->clear(sf::Color::Black);
         m_window->draw(sf::Sprite(m_target->getTexture()));
         m_window->display();

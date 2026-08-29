@@ -21,6 +21,7 @@ itself, offscreen, from a pinned seed. Nothing here was staged.</sup>
 | **Snakes** | Five, each a different way to play rather than a palette swap. |
 | **Renderer** | Procedural neon: glow, particles, screen shake, batched into a few draw calls. |
 | **Input** | Keyboard and mouse everywhere. |
+| **Options** | Window mode, vsync, volumes, screen shake, bloom — saved beside the executable. |
 
 ## Screens
 
@@ -39,11 +40,19 @@ few seconds later. Highest score when the clock runs out.
 
 ![Four snakes sharing one arena, eating, dying and respawning](docs/demo_netplay.gif)
 
-**The lobby.** Four players, four snakes, four colours. The activity feed is real. The
-host's button names whoever it is waiting on, because a lobby never has to fill up —
-two players is a match.
+**The lobby.** Four players, four snakes, four colours — each seat showing the snake
+that player actually picked, with its ability under the portrait, so nobody has to
+guess what the table is bringing. The activity feed is real. The host's button names
+whoever it is waiting on, because a lobby never has to fill up — two players is a match.
 
-![A full four-player lobby](docs/shot_lobby.png)
+![A full four-player lobby, each seat showing its snake portrait and ability](docs/shot_lobby.png)
+
+![Players joining, picking snakes and readying up in the lobby](docs/demo_lobby.gif)
+
+**Options.** Window mode, vertical sync, volumes and comfort toggles, written to a
+plain text file beside the executable. `F11` toggles fullscreen from anywhere.
+
+![The options screen](docs/shot_options.png)
 
 <details>
 <summary>More screens — pause, level clear, game over, the session browser</summary>
@@ -82,6 +91,13 @@ clickable, and hover follows the pointer.
 Two turns can be buffered, so fast double-taps around a corner register instead of
 being swallowed.
 
+`F11` toggles fullscreen anywhere. Three window modes are offered rather than two:
+**windowed**, **borderless** (desktop-sized, no decoration — alt-tabs instantly and
+leaves a second monitor alone) and **exclusive fullscreen**. Exclusive fullscreen takes
+the display away from the desktop compositor, and the compositor is what draws the
+mouse pointer — so in that mode the game draws its own, on the canvas, letterboxed with
+everything else. The pointer never disappears, whichever mode you play in.
+
 ## Multiplayer
 
 ```
@@ -104,6 +120,16 @@ flowchart LR
         G3[Guest] -->|dials out| R
     end
 ```
+
+**The local snake is predicted; nothing else is.** A guest applies its own turn on the
+next frame and replays any turns the host has not acknowledged yet, so the controls
+answer immediately instead of after a round trip. Reconciliation snaps only when the
+host's head is somewhere the prediction never was — being a step ahead is the point,
+not a disagreement. Eating, kills and deaths stay host-authoritative, because showing a
+score that was not earned and then taking it back is worse than a tenth of a second of
+delay. Every snake also slides between tiles rather than jumping, single player
+included: it steps seven times a second, and no amount of netcode makes a teleport look
+continuous.
 
 Neither end has to accept an inbound connection: **both dial out to the relay**, so
 nobody forwards a port. The relay never parses a game message and holds no game
