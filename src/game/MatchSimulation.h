@@ -49,7 +49,9 @@ namespace neoncoil
 
         // Intents, not commands. The simulation decides whether a turn is legal
         // and when it takes effect, exactly as PlayState does for one snake.
-        void queueDirection(PlayerSlot slot, Direction direction);
+        // `sequence` is the client's own input counter, echoed back in the
+        // snapshot so that client can tell which of its turns have landed.
+        void queueDirection(PlayerSlot slot, Direction direction, std::uint32_t sequence = 0);
         void requestAbility(PlayerSlot slot);
 
         void update(float deltaSeconds);
@@ -90,6 +92,7 @@ namespace neoncoil
             float respawnTimer{ 0.0f };
             float tickAccumulator{ 0.0f };
             bool abilityRequested{ false };
+            std::uint32_t lastInput{ 0 };
 
             int score{ 0 };
             int kills{ 0 };

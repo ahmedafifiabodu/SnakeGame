@@ -42,6 +42,10 @@ namespace neoncoil
         net::NetGame* m_session{ nullptr };
         float m_elapsed{ 0.0f };
 
+        // 0..1 through the current step, for sliding the snakes this client does
+        // not simulate. Reset whenever a snapshot changes the board.
+        float m_remoteSlide{ 0.0f };
+
         // Rebuilt each frame from the snapshot's cumulative list of destroyed
         // walls, so a wall a shield shattered stops being drawn without the
         // client needing a mutable copy of the arena.

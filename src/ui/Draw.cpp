@@ -1,4 +1,5 @@
 #include "Draw.h"
+#include <cstdlib>
 
 #include "../core/Glyphs.h"
 
@@ -13,6 +14,29 @@ namespace neoncoil::ui
             return;
 
         screen.rect(view.left(tile.x) + inset, view.top(tile.y) + inset, size, size, colour);
+    }
+
+    void boardTileLerp(Screen& screen, const BoardView& view, Vec2 from, Vec2 to, float t,
+        Color colour, float inset)
+    {
+        // Wrapping is not interpolated: a segment that crossed the board would
+        // be drawn streaking through the middle of it. The board is walled on
+        // every side so this only happens on a teleport, and snapping there is
+        // both correct and rare.
+        if (std::abs(to.x - from.x) > 1 || std::abs(to.y - from.y) > 1)
+        {
+            boardTile(screen, view, to, colour, inset);
+            return;
+        }
+
+        const float x = static_cast<float>(from.x) + static_cast<float>(to.x - from.x) * t;
+        const float y = static_cast<float>(from.y) + static_cast<float>(to.y - from.y) * t;
+
+        screen.rect(view.originX + x * view.tileSize + inset,
+            view.originY + y * view.tileSize + inset,
+            view.tileSize - inset * 2.0f,
+            view.tileSize - inset * 2.0f,
+            colour);
     }
 
     void boardGlyph(Screen& screen, const BoardView& view, Vec2 tile, wchar_t glyph,

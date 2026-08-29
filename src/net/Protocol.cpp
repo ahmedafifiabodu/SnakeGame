@@ -362,7 +362,7 @@ namespace neoncoil::net
                 << static_cast<std::int32_t>(snake.score)
                 << static_cast<std::int32_t>(snake.kills)
                 << static_cast<std::int32_t>(snake.deaths)
-                << snake.phasing << snake.shielded << snake.abilityActive << snake.abilityCharge;
+                << snake.phasing << snake.shielded << snake.abilityActive << snake.abilityCharge << snake.lastInput;
 
             packet << static_cast<std::uint32_t>(snake.body.size());
             for (const Vec2& segment : snake.body)
@@ -411,7 +411,7 @@ namespace neoncoil::net
 
             packet >> snake.slot >> snake.alive >> snake.respawnRemaining >> direction
                 >> score >> kills >> deaths
-                >> snake.phasing >> snake.shielded >> snake.abilityActive >> snake.abilityCharge;
+                >> snake.phasing >> snake.shielded >> snake.abilityActive >> snake.abilityCharge >> snake.lastInput;
 
             snake.direction = static_cast<Direction>(std::min<std::uint8_t>(direction,
                 static_cast<std::uint8_t>(Direction::Right)));

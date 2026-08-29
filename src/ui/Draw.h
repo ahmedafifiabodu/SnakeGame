@@ -29,6 +29,17 @@ namespace neoncoil::ui
     // separate blocks rather than one mass.
     void boardTile(Screen& screen, const BoardView& view, Vec2 tile, Color colour, float inset = 0.0f);
 
+    // The same tile, drawn part-way between `from` and `to`.
+    //
+    // A snake steps about seven times a second, so drawn on tile boundaries it
+    // does not move, it teleports -- and no amount of network work makes a
+    // teleport feel smooth. Sliding each segment from where it was to where it
+    // is turns the same simulation into continuous motion, which is the single
+    // largest difference between this game feeling responsive and feeling like
+    // a slideshow. `t` is 0..1 through the current step.
+    void boardTileLerp(Screen& screen, const BoardView& view, Vec2 from, Vec2 to, float t,
+        Color colour, float inset = 0.0f);
+
     // Glyph from the atlas, scaled to `fraction` of the tile and centred.
     void boardGlyph(Screen& screen, const BoardView& view, Vec2 tile, wchar_t glyph,
         Color colour, float fraction = 1.0f);

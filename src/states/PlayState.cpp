@@ -7,6 +7,7 @@
 #include "../ui/Draw.h"
 #include "../ui/Layout.h"
 
+#include <deque>
 #include <algorithm>
 #include <cmath>
 
@@ -566,10 +567,23 @@ namespace neoncoil
         constexpr float kSegmentInset = 2.0f;
         const float alpha = phasing ? 0.45f : 1.0f;
 
-        int fromTail = 0;
-        for (auto it = m_snake.body().rbegin(); it != m_snake.body().rend(); ++it, ++fromTail)
+        // How far through the current step the snake is. Drawn on tile
+        // boundaries it does not move, it teleports about seven times a second;
+        // sliding each segment out of the tile behind it turns the same
+        // simulation into continuous motion.
+        //
+        // A dead snake holds still: sliding a corpse into the wall that killed
+        // it reads as the crash not having registered.
+        const float stepSeconds = std::max(0.02f, currentTickSeconds(context));
+        const float slide = m_dead ? 0.0f
+            : std::clamp(m_tickAccumulator / stepSeconds, 0.0f, 1.0f);
+
+        const std::deque<Vec2>& segments = m_snake.body();
+
+        for (std::size_t i = segments.size(); i-- > 0; )
         {
-            const bool isHead = (it + 1) == m_snake.body().rend();
+            const bool isHead = i == 0;
+            const std::size_t fromTail = segments.size() - 1 - i;
 
             Color colour = isHead ? headColour : bodyColour;
             if (type.altBodyGlyph != 0 && !isHead && fromTail % 2 == 0)
@@ -578,18 +592,27 @@ namespace neoncoil
                 colour = colour.scaled(0.62f);          // the tail fades out
             colour = colour.withAlpha(static_cast<std::uint8_t>(alpha * 255.0f));
 
-            ui::boardTile(screen, view, *it, colour, kSegmentInset);
+            // Where segment i+1 is now is exactly where segment i was a step
+            // ago, so the slide needs no history of its own. The tail has
+            // nothing behind it and stays put.
+            const Vec2 from = (i + 1 < segments.size()) ? segments[i + 1] : segments[i];
+            const Vec2 to = segments[i];
+
+            ui::boardTileLerp(screen, view, from, to, slide, colour, kSegmentInset);
+
+            const float px = view.left(from.x) + (view.left(to.x) - view.left(from.x)) * slide;
+            const float py = view.top(from.y) + (view.top(to.y) - view.top(from.y)) * slide;
 
             if (isHead)
             {
-                screen.glowRect(view.left(it->x), view.top(it->y), view.tileSize, view.tileSize,
+                screen.glowRect(px, py, view.tileSize, view.tileSize,
                     headColour, view.tileSize * 0.9f, 1.3f);
             }
             else if (fromTail % 2 == 0)
             {
                 // Glowing every other segment keeps the bloom from washing the
                 // whole body out, and costs half the quads.
-                screen.glowRect(view.left(it->x) + kSegmentInset, view.top(it->y) + kSegmentInset,
+                screen.glowRect(px + kSegmentInset, py + kSegmentInset,
                     view.tileSize - kSegmentInset * 2.0f, view.tileSize - kSegmentInset * 2.0f,
                     bodyColour, view.tileSize * 0.35f, 0.55f);
             }

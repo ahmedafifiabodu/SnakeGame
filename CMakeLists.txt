@@ -108,6 +108,7 @@ add_executable(NeonCoil
     src/game/MatchSnapshot.cpp
     src/game/Progression.cpp
     src/game/Snake.cpp
+    src/game/SnakePrediction.cpp
     src/game/SnakeType.cpp
 
     src/net/ClientSession.cpp

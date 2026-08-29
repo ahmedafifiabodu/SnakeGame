@@ -80,7 +80,25 @@ namespace neoncoil
     Transition NetPlayState::update(AppContext& context, float deltaSeconds)
     {
         m_elapsed += deltaSeconds;
+
+        const std::uint32_t before = m_session->snapshot().tick;
         m_session->update(deltaSeconds);
+
+        // Other players' snakes have no local simulation to slide along, so the
+        // slide is driven by the snapshots themselves: the clock restarts every
+        // time the board changes and runs at the rate the snakes step.
+        //
+        // The result is a segment that leaves its old tile as the snapshot
+        // arrives and reaches its new one just as the next is due. It renders
+        // the remote snakes a fraction of a step behind where the host has them,
+        // which is invisible, and it is the difference between a snake that
+        // glides and one that flickers between tiles.
+        const MatchSnapshot& latest = m_session->snapshot();
+        if (latest.tick != before)
+            m_remoteSlide = 0.0f;
+
+        const float step = std::max(0.02f, m_session->rules().tickSeconds);
+        m_remoteSlide = std::min(1.0f, m_remoteSlide + deltaSeconds / step);
 
         const net::SessionPhase phase = m_session->phase();
 
@@ -442,6 +460,12 @@ namespace neoncoil
         // --- snakes -----------------------------------------------------------
         constexpr float kSegmentInset = 2.0f;
 
+        // The local snake is drawn from the prediction rather than the
+        // snapshot, so a turn appears on the next frame instead of a round trip
+        // later. Everyone else is drawn from the host's version, because their
+        // inputs are not ours to guess at.
+        const SnakePrediction* predicted = m_session->prediction();
+
         for (const SnakeSnapshot& snake : snapshot.snakes)
         {
             if (!snake.alive || snake.body.empty())
@@ -454,10 +478,30 @@ namespace neoncoil
             const Color headColour = snake.shielded ? Color::Blue : Color::White;
             const float alpha = snake.phasing ? 0.45f : 1.0f;
 
-            for (std::size_t i = snake.body.size(); i-- > 0; )
+            const bool isLocal = predicted != nullptr && snake.slot == m_session->localSlot();
+
+            // One body, from whichever source owns this snake.
+            std::vector<Vec2> body;
+            float slide = 0.0f;
+
+            if (isLocal)
+            {
+                body.assign(predicted->body().begin(), predicted->body().end());
+                slide = predicted->stepFraction();
+            }
+            else
+            {
+                body = snake.body;
+                slide = m_remoteSlide;
+            }
+
+            if (body.empty())
+                continue;
+
+            for (std::size_t i = body.size(); i-- > 0; )
             {
                 const bool isHead = i == 0;
-                const std::size_t fromTail = snake.body.size() - 1 - i;
+                const std::size_t fromTail = body.size() - 1 - i;
 
                 Color colour = isHead ? headColour : bodyColour;
                 if (type.altBodyGlyph != 0 && !isHead && fromTail % 2 == 0)
@@ -466,17 +510,26 @@ namespace neoncoil
                     colour = colour.scaled(0.62f);
                 colour = colour.withAlpha(static_cast<std::uint8_t>(alpha * 255.0f));
 
-                ui::boardTile(screen, view, snake.body[i], colour, kSegmentInset);
+                // Each segment slides out of the tile the one behind it occupies
+                // and into its own. No history is needed for that: on a snake,
+                // where segment i+1 is now is exactly where segment i was a step
+                // ago. The tail has nothing behind it and simply holds still.
+                const Vec2 from = (i + 1 < body.size()) ? body[i + 1] : body[i];
+                const Vec2 to = body[i];
+
+                ui::boardTileLerp(screen, view, from, to, slide, colour, kSegmentInset);
+
+                const float x = view.left(from.x) + (view.left(to.x) - view.left(from.x)) * slide;
+                const float y = view.top(from.y) + (view.top(to.y) - view.top(from.y)) * slide;
 
                 if (isHead)
                 {
-                    screen.glowRect(view.left(snake.body[i].x), view.top(snake.body[i].y),
-                        view.tileSize, view.tileSize, headColour, view.tileSize * 0.9f, 1.3f);
+                    screen.glowRect(x, y, view.tileSize, view.tileSize,
+                        headColour, view.tileSize * 0.9f, 1.3f);
                 }
                 else if (fromTail % 2 == 0)
                 {
-                    screen.glowRect(view.left(snake.body[i].x) + kSegmentInset,
-                        view.top(snake.body[i].y) + kSegmentInset,
+                    screen.glowRect(x + kSegmentInset, y + kSegmentInset,
                         view.tileSize - kSegmentInset * 2.0f, view.tileSize - kSegmentInset * 2.0f,
                         bodyColour, view.tileSize * 0.35f, 0.55f);
                 }

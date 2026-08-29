@@ -193,6 +193,12 @@ namespace neoncoil::net
         InputCommand stamped = input;
         stamped.sequence = ++m_inputSequence;
 
+        // Applied locally in the same breath it is sent. This is the whole of
+        // "the game feels responsive": the turn happens now, and the host's
+        // version of it arrives later to confirm or correct.
+        if (stamped.hasDirection)
+            m_prediction.queueDirection(stamped.direction, stamped.sequence);
+
         sf::Packet packet = beginClient(ClientMessage::Input);
         packet << stamped;
         m_transport->send(std::move(packet));
@@ -288,6 +294,7 @@ namespace neoncoil::net
             m_snapshot = MatchSnapshot{};
             m_result = MatchResult{};
             m_inputSequence = 0;
+            m_prediction.stop();
             m_phase = SessionPhase::InMatch;
             m_status = L"Match running";
             note(L"Match started");
@@ -305,7 +312,10 @@ namespace neoncoil::net
             // arrives after a MatchEnd would rewind the results screen, so old
             // ticks are dropped rather than trusted.
             if (m_phase == SessionPhase::InMatch && snapshot.tick >= m_snapshot.tick)
+            {
                 m_snapshot = std::move(snapshot);
+                syncPrediction();
+            }
             break;
         }
 
@@ -346,6 +356,36 @@ namespace neoncoil::net
             break;
         }
         }
+    }
+
+    void ClientSession::syncPrediction()
+    {
+        const SnakeSnapshot* mine = m_snapshot.find(m_localSlot);
+
+        // Nothing to predict while dead, between respawns, or before a seat has
+        // been assigned. The prediction restarts from the next body the host
+        // sends, which is exactly the respawn.
+        if (mine == nullptr || !mine->alive || mine->body.empty())
+        {
+            m_prediction.stop();
+            return;
+        }
+
+        // Snakes do not move during the countdown, so predicting through it
+        // would walk the snake off its start tile before the match began.
+        if (m_snapshot.phase != MatchPhase::Running)
+        {
+            m_prediction.stop();
+            return;
+        }
+
+        const LobbySlot* seat = m_lobby.find(m_localSlot);
+        const std::uint8_t typeIndex = seat != nullptr ? seat->typeIndex : m_typeIndex;
+
+        if (!m_prediction.active())
+            m_prediction.begin(m_arena, m_rules, *mine, typeIndex);
+        else
+            m_prediction.reconcile(*mine, mine->lastInput);
     }
 
     void ClientSession::update(float deltaSeconds)
@@ -419,6 +459,12 @@ namespace neoncoil::net
             m_heartbeatSentAt = std::chrono::steady_clock::now();
             m_heartbeatPending = true;
         }
+
+        // Stepped on the host's own clock. Everything the player does lands
+        // here first and travels to the host in parallel, which is what turns a
+        // round trip of felt delay into none.
+        if (m_phase == SessionPhase::InMatch)
+            m_prediction.update(deltaSeconds);
 
         // Pumped again at the end, not only at the start.
         //

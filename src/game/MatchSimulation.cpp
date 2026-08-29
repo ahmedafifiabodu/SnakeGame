@@ -121,15 +121,24 @@ namespace neoncoil
         return nullptr;
     }
 
-    void MatchSimulation::queueDirection(PlayerSlot slot, Direction direction)
+    void MatchSimulation::queueDirection(PlayerSlot slot, Direction direction, std::uint32_t sequence)
     {
         if (m_phase == MatchPhase::Finished)
             return;
 
         // Turns are accepted during the countdown so the first move is not a
         // scramble, but the snakes do not move until Running.
-        if (Racer* racer = find(slot); racer != nullptr && racer->alive)
-            racer->body.queueDirection(direction);
+        Racer* racer = find(slot);
+        if (racer == nullptr || !racer->alive)
+            return;
+
+        racer->body.queueDirection(direction);
+
+        // Recorded even when the turn was rejected as illegal. The client needs
+        // to know the host has SEEN this input, not that it liked it -- an input
+        // left unacknowledged would be replayed by the prediction for ever.
+        if (sequence > racer->lastInput)
+            racer->lastInput = sequence;
     }
 
     void MatchSimulation::requestAbility(PlayerSlot slot)
@@ -722,6 +731,7 @@ namespace neoncoil
             snake.slot = racer.slot;
             snake.alive = racer.alive;
             snake.respawnRemaining = racer.respawnTimer;
+            snake.lastInput = racer.lastInput;
             snake.direction = racer.body.direction();
             snake.score = racer.score;
             snake.kills = racer.kills;

@@ -24,7 +24,9 @@ namespace neoncoil::net
     //
     // 2: heartbeats carry a nonce and a reported ping, so every player can see
     //    every player's latency.
-    inline constexpr std::uint16_t kProtocolVersion = 2;
+    // 3: snapshots carry the last input sequence the host applied per snake, so
+    //    a client can predict its own movement and reconcile.
+    inline constexpr std::uint16_t kProtocolVersion = 3;
 
     // Stamped on the front of every message and on every discovery datagram, so
     // a stray packet from something else on the port is dropped rather than

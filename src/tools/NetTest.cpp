@@ -2,6 +2,7 @@
 
 #include "../game/LevelGenerator.h"
 #include "../game/MatchSimulation.h"
+#include "../game/SnakePrediction.h"
 #include "../net/ClientSession.h"
 #include "../net/HostSession.h"
 #include "../net/Matchmaker.h"
@@ -435,6 +436,119 @@ namespace neoncoil
         clientTwo.reset();
         clientThree.reset();
         host.reset();
+
+        // -------------------------------------------------------- prediction --
+        //
+        // The point of predicting is that a turn is visible before the host has
+        // heard about it. Everything below is about that being true, and about
+        // the correction that follows being invisible when the host agrees.
+        std::cout << "\npredicting the local snake\n";
+
+        {
+            MatchRules rules;
+            const Level arena = LevelGenerator::generate(rules.arenaLevelIndex, 0xA11CEull, rules.startLength);
+
+            std::vector<MatchPlayerInit> players;
+            MatchPlayerInit only;
+            only.slot = 1;
+            only.name = L"P1";
+            players.push_back(only);
+
+            MatchSimulation host;
+            host.start(arena, rules, 0xA11CEull, players);
+
+            // Out of the countdown, so the snake is actually moving.
+            host.update(rules.countdownSeconds + 0.001f);
+
+            MatchSnapshot snapshot;
+            host.buildSnapshot(snapshot);
+            const SnakeSnapshot* authoritative = snapshot.find(1);
+            check(authoritative != nullptr && authoritative->alive, "the host has a live snake to predict from");
+
+            if (authoritative != nullptr && authoritative->alive)
+            {
+                SnakePrediction prediction;
+                prediction.begin(arena, rules, *authoritative, 0);
+                check(prediction.active(), "the prediction starts from an authoritative body");
+
+                const Direction heading = authoritative->direction;
+
+                // A turn that is legal from the current heading. Reversing is
+                // rejected by the same rule the host uses, so the perpendicular
+                // one is the one worth testing.
+                const Direction turn = (heading == Direction::Left || heading == Direction::Right)
+                    ? Direction::Up : Direction::Right;
+
+                prediction.queueDirection(turn, 1);
+
+                // One step on the local clock, with the host told nothing.
+                prediction.update(rules.tickSeconds + 0.001f);
+
+                check(prediction.direction() == turn,
+                    "a turn applies locally without the host having seen it");
+
+                const Vec2 predictedHead = prediction.body().front();
+                check(predictedHead != authoritative->body.front(),
+                    "and the head has already moved off the tile the host still reports");
+
+                // Now the host catches up with the same input.
+                host.queueDirection(1, turn, 1);
+                host.update(rules.tickSeconds + 0.001f);
+                host.buildSnapshot(snapshot);
+
+                const SnakeSnapshot* caughtUp = snapshot.find(1);
+                check(caughtUp != nullptr && caughtUp->lastInput == 1,
+                    "the snapshot says which input the host has applied");
+
+                // Agreement, tested against exactly what agreement means: the
+                // host's head is a tile the prediction has been on. Driving two
+                // simulations a step at a time and hoping they land together
+                // would be testing the harness, not the reconciliation.
+                {
+                    SnakeSnapshot agreeing = *authoritative;
+                    agreeing.alive = true;
+                    agreeing.direction = prediction.direction();
+                    agreeing.body.assign(prediction.body().begin(), prediction.body().end());
+
+                    prediction.reconcile(agreeing, 1);
+                    check(prediction.active(), "reconciling against an agreeing host keeps predicting");
+                    check(prediction.body().front() == predictedHead,
+                        "and does not move the snake, because the guess was right");
+                }
+
+                // The client being a step ahead of the host is the normal case,
+                // not a disagreement -- snapping on it would undo the prediction
+                // on every snapshot and reintroduce the stutter it removes.
+                {
+                    SnakeSnapshot behind = *authoritative;
+                    behind.alive = true;
+                    behind.direction = prediction.direction();
+                    behind.body.assign(prediction.body().begin() + 1, prediction.body().end());
+
+                    prediction.reconcile(behind, 1);
+                    check(prediction.body().front() == predictedHead,
+                        "a host one step behind is not a disagreement");
+                }
+
+                // A host that disagrees wins, whatever the prediction believed.
+                SnakeSnapshot elsewhere = *caughtUp;
+                elsewhere.body.front() = Vec2{ elsewhere.body.front().x, elsewhere.body.front().y };
+                elsewhere.body.clear();
+                elsewhere.body.push_back(Vec2{ 5, 5 });
+                elsewhere.body.push_back(Vec2{ 4, 5 });
+                elsewhere.direction = Direction::Right;
+
+                prediction.reconcile(elsewhere, 1);
+                check(prediction.body().front() == Vec2({ 5, 5 }),
+                    "a host that disagrees is obeyed rather than argued with");
+
+                // Death stops the prediction rather than predicting through it.
+                SnakeSnapshot dead = elsewhere;
+                dead.alive = false;
+                prediction.reconcile(dead, 1);
+                check(!prediction.active(), "and a dead snake is not predicted at all");
+            }
+        }
 
         // ----------------------------------------------------------- regions --
         //

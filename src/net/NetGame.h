@@ -4,6 +4,7 @@
 #include "Protocol.h"
 #include "../game/Level.h"
 #include "../game/MatchSnapshot.h"
+#include "../game/SnakePrediction.h"
 
 #include <string>
 #include <vector>
@@ -51,6 +52,11 @@ namespace neoncoil::net
         // Which relay this session is going through, as an index into
         // NetConfig::relays, or -1 for a direct connection.
         virtual int relayIndex() const { return -1; }
+
+        // The local snake, run ahead of the host so a turn shows up on the next
+        // frame rather than after a round trip. Null when there is nothing to
+        // predict -- on the host, before a match, and while dead.
+        virtual const SnakePrediction* prediction() const { return nullptr; }
 
         virtual void setReady(bool ready) = 0;
         virtual void setLoadout(std::uint8_t colourIndex, std::uint8_t typeIndex) = 0;

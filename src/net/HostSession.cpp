@@ -420,7 +420,7 @@ namespace neoncoil::net
                 break;
 
             if (input.hasDirection)
-                m_simulation.queueDirection(client->slot, input.direction);
+                m_simulation.queueDirection(client->slot, input.direction, input.sequence);
             if (input.ability)
                 m_simulation.requestAbility(client->slot);
             break;

@@ -53,6 +53,10 @@ namespace neoncoil::net
         PlayerSlot localSlot() const override { return m_localSlot; }
         int pingMs() const override { return m_pingMs; }
         int relayIndex() const override { return m_relayIndex; }
+        const SnakePrediction* prediction() const override
+        {
+            return m_prediction.active() ? &m_prediction : nullptr;
+        }
 
         void setReady(bool ready) override;
         void setLoadout(std::uint8_t colourIndex, std::uint8_t typeIndex) override;
@@ -70,6 +74,11 @@ namespace neoncoil::net
         void sendHello();
         void handleMessage(sf::Packet& packet);
         void note(std::wstring line);
+
+        // Starts, stops or corrects the local prediction from whatever the last
+        // snapshot said. Called on every snapshot, so the prediction can never
+        // be running against a body the host has moved on from.
+        void syncPrediction();
 
         NetConfig m_config;
         IIdentityProvider& m_identity;
@@ -106,5 +115,9 @@ namespace neoncoil::net
         // a readout that flickers is one players stop believing.
         int m_pingMs{ -1 };
         int m_relayIndex{ -1 };
+
+        // The local snake, stepped on the host's clock so a turn is visible
+        // immediately instead of a round trip later.
+        SnakePrediction m_prediction;
     };
 }

@@ -42,6 +42,12 @@ namespace neoncoil
         bool shielded{ false };
         bool abilityActive{ false };
         float abilityCharge{ 0.0f };
+
+        // Sequence of the last input the host applied to this snake. The owning
+        // client uses it to throw away the inputs it no longer has to replay --
+        // without it, a prediction cannot tell which of its turns the host has
+        // already seen and would keep re-applying all of them.
+        std::uint32_t lastInput{ 0 };
     };
 
     struct FoodSnapshot
