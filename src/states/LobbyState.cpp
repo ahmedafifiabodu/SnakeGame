@@ -2,11 +2,13 @@
 
 #include "NetPlayState.h"
 #include "../core/Glyphs.h"
+#include "../core/Settings.h"
 #include "../game/SnakeType.h"
 #include "../ui/Art.h"
 #include "../ui/Draw.h"
 #include "../ui/Layout.h"
 #include "../ui/Palette.h"
+#include "../ui/SnakeCard.h"
 
 #include <algorithm>
 
@@ -21,9 +23,19 @@ namespace neoncoil
         constexpr int kSlotGap = 1;
 
         constexpr int kSideX = 6;
-        constexpr int kSideY = 25;
+        constexpr int kSideY = 24;
         constexpr int kSideW = 108;
-        constexpr int kSideH = 11;
+        constexpr int kSideH = 14;
+
+        // The panel is three columns: what you are flying, what you can press,
+        // and what your snake actually does. The last one is new -- a player
+        // picking SHED or GOLD RUSH before a match had no way to find out what
+        // either meant without leaving the session.
+        //
+        // It gets the whole right-hand half, and the event feed gives up its
+        // column for it. Knowing what the space bar does is worth more before a
+        // match than a scrolling list of who joined, and the newest line of that
+        // list still shows under the buttons.
 
         int wrapIndex(int value, int count)
         {
@@ -345,23 +357,11 @@ namespace neoncoil
                 ui::truncateTo(type.ability.name, width), Color::Slate, Color::Black);
 
             // A short crawling snake in the player's own colour, so a full lobby
-            // reads at a glance rather than as four identical name cards.
-            const int track = width + 8;
-            const int offset = static_cast<int>((m_elapsed + static_cast<float>(i) * 0.4f) * 8.0f) % track;
-            screen.fillRect(inner, kSlotsY + 7, width, 1, glyph::Space, Color::Silver, Color::Navy);
-            for (int s = 0; s < 8; ++s)
-            {
-                const int px = inner + ((offset - s + track) % track) - 4;
-                if (px < inner || px >= inner + width)
-                    continue;
-
-                wchar_t body = type.bodyGlyph;
-                if (type.altBodyGlyph != 0 && s % 2 == 0)
-                    body = type.altBodyGlyph;
-
-                screen.put(px, kSlotsY + 7, s == 0 ? type.headGlyph : body,
-                    s == 0 ? Color::White : accent, Color::Navy);
-            }
+            // reads at a glance rather than as four identical name cards. Same
+            // strip the field report and the main menu draw, offset per seat so
+            // four of them do not move in lockstep.
+            ui::drawSnakeStrip(screen, inner, kSlotsY + 7, width, type, accent,
+                m_elapsed + static_cast<float>(i) * 0.4f);
 
             const wchar_t* tag = seat.isHost ? L"HOST" : (seat.ready ? L"READY" : L"NOT READY");
             const Color tagColour = seat.isHost ? Color::Gold : (seat.ready ? Color::Lime : Color::Slate);
@@ -371,7 +371,7 @@ namespace neoncoil
             // A lobby is where a player can still do something about a bad
             // connection -- once the countdown has run, the number is only ever
             // an explanation.
-            if (!seat.isHost)
+            if (!seat.isHost && Settings::instance().showPing)
             {
                 const int ping = seat.pingMs == 0 ? -1 : static_cast<int>(seat.pingMs);
                 screen.textCenteredIn(inner, width, kSlotsY + 8, ui::pingText(ping),
@@ -501,23 +501,32 @@ namespace neoncoil
         if (leaveFocused)
             screen.put(buttonX - 2, optionsY + 2, glyph::TriRight, Color::Gold, Color::Transparent);
 
-        // --- event feed -------------------------------------------------------
-        const int feedX = buttonX + buttonW + 4;
-        const int feedWidth = kSideX + kSideW - feedX - 3;
-
-        if (feedWidth > 8)
+        // --- newest activity line ---------------------------------------------
+        //
+        // One line, under the buttons, rather than a column of six. What a
+        // player needs from it is "did that person actually join", which the
+        // most recent entry answers.
+        const std::vector<std::wstring>& events = m_session->events();
+        if (!events.empty())
         {
-            screen.text(feedX, kSideY + 2, L"ACTIVITY", Color::Slate, Color::Black);
+            screen.text(buttonX, optionsY + 4, ui::truncateTo(events.back(), buttonW + 4),
+                Color::Slate.scaled(1.3f), Color::Black);
+        }
 
-            const std::vector<std::wstring>& events = m_session->events();
-            const std::size_t shown = std::min<std::size_t>(events.size(), 6);
+        // --- field report -----------------------------------------------------
+        //
+        // Right-hand half, and the thing that changes when the player presses
+        // left or right on SNAKE. Showing the ability here rather than only its
+        // name is the difference between choosing a snake and guessing at one.
+        const int reportX = buttonX + buttonW + 4;
+        const int reportWidth = kSideX + kSideW - reportX - 3;
+        const int reportY = kSideY + 2;
 
-            for (std::size_t i = 0; i < shown; ++i)
-            {
-                const std::wstring& line = events[events.size() - shown + i];
-                screen.text(feedX, kSideY + 3 + static_cast<int>(i),
-                    ui::truncateTo(line, feedWidth), Color::Silver.scaled(0.9f), Color::Black);
-            }
+        if (reportWidth > 16)
+        {
+            screen.text(reportX, reportY, L"FIELD REPORT", Color::Gold, Color::Black);
+            ui::drawSnakeReport(screen, reportX, reportY + 1, reportWidth,
+                kSideY + kSideH - reportY - 2, type, context.profile.colour, m_elapsed);
         }
     }
 

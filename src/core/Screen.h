@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Colors.h"
+#include "Settings.h"
 #include "GlyphAtlas.h"
 #include "Textures.h"
 
@@ -55,7 +56,19 @@ namespace neoncoil
         bool isOpen() const;
         void pumpEvents(Input& input);
         void requestClose();
+
+        // Windowed, borderless or exclusive fullscreen. Recreates the window,
+        // which is why it takes the mode rather than toggling: a toggle can only
+        // ever describe two of the three, and F11 has to land somewhere sensible
+        // whichever one the player is currently in.
+        void setDisplayMode(DisplayMode mode);
+        DisplayMode displayMode() const { return m_displayMode; }
+
+        // F11. Fullscreen goes back to windowed; anything else goes fullscreen.
         void toggleFullscreen();
+
+        void setVerticalSync(bool enabled);
+        bool verticalSync() const { return m_vsync; }
 
         // --- frame -----------------------------------------------------------
         void clear(Color background = Color::Black);
@@ -137,8 +150,9 @@ namespace neoncoil
         sf::FloatRect m_solidRect;   // fully opaque atlas slot, used for fills
 
         std::unique_ptr<sf::RenderWindow> m_window;
+        DisplayMode m_displayMode{ DisplayMode::Windowed };
+        bool m_vsync{ true };
         std::unique_ptr<sf::RenderTexture> m_target;   // always present; the canvas
-        bool m_fullscreen{ false };
         bool m_offscreen{ false };
         std::wstring m_title;
 

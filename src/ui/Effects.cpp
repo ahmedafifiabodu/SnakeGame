@@ -1,4 +1,5 @@
 #include "Effects.h"
+#include "../core/Settings.h"
 
 #include "Draw.h"
 #include "../core/Glyphs.h"
@@ -100,6 +101,12 @@ namespace neoncoil::ui
 
     void Effects::addShake(float strength)
     {
+        // A comfort setting, not a quality one: some players find the impacts
+        // unpleasant, and the cheapest place to honour that is where the shake
+        // is requested rather than at every call site that requests it.
+        if (!Settings::instance().screenShake)
+            return;
+
         m_shakeStrength = std::max(m_shakeStrength, strength);
         m_shakeRemaining = std::max(m_shakeRemaining, 0.28f);
     }

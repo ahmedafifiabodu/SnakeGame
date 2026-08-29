@@ -96,6 +96,7 @@ add_executable(NeonCoil
     src/core/GlyphAtlas.cpp
     src/core/Input.cpp
     src/core/Rng.cpp
+    src/core/Settings.cpp
     src/core/Textures.cpp
     src/core/Screen.cpp
 
@@ -128,6 +129,7 @@ add_executable(NeonCoil
     src/states/MenuState.cpp
     src/states/MultiplayerMenuState.cpp
     src/states/NetPlayState.cpp
+    src/states/OptionsState.cpp
     src/states/OverlayStates.cpp
     src/states/PlayState.cpp
 
@@ -141,6 +143,7 @@ add_executable(NeonCoil
     src/ui/Hit.cpp
     src/ui/Hud.cpp
     src/ui/Palette.cpp
+    src/ui/SnakeCard.cpp
 )
 
 target_include_directories(NeonCoil PRIVATE src)

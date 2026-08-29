@@ -13,10 +13,12 @@
 #include "states/LobbyState.h"
 #include "states/MenuState.h"
 #include "states/MultiplayerMenuState.h"
+#include "states/OptionsState.h"
 #include "states/NetPlayState.h"
 #include "states/OverlayStates.h"
 #include "states/PlayState.h"
 #include "tools/Autoplay.h"
+#include "core/Settings.h"
 #include "tools/NetDemo.h"
 #include "ui/Draw.h"
 #include "ui/Layout.h"
@@ -162,7 +164,7 @@ namespace neoncoil
             "  --selftest <n>    Generate and validate <n> levels, print a report, exit.\n"
             "  --dump <n>        Print level <n> as ASCII and exit.\n"
             "  --uidump <screen> Render a screen offscreen as ASCII. One of menu, play,\n"
-            "                    pause, clear, over, netmenu, lobby, netplay.\n"
+            "                    pause, clear, over, options, netmenu, lobby, netplay.\n"
             "  --screenshot <screen> <file.png>\n"
             "                    Render a screen offscreen and write it to a PNG.\n"
             "  --capture <screen> <dir>\n"
@@ -479,6 +481,12 @@ namespace neoncoil
             return true;
         }
 
+        if (which == "options")
+        {
+            machine.apply(Transition::reset(std::make_unique<OptionsState>()), context);
+            return true;
+        }
+
         if (which == "netmenu")
         {
             // A real session on a real socket, purely so the browser has
@@ -577,7 +585,7 @@ namespace neoncoil
         else if (which != "play")
         {
             std::cerr << "unknown screen '" << which
-                      << "' (menu|play|pause|clear|over|netmenu|lobby|netplay)\n";
+                      << "' (menu|play|pause|clear|over|options|netmenu|lobby|netplay)\n";
             return false;
         }
 
@@ -644,6 +652,17 @@ namespace neoncoil
 
         if (const sf::Texture* icon = screen.textures().get("ui/icon.png"))
             screen.setIcon(*icon);
+
+        // Player settings, applied before the first frame so a player who chose
+        // borderless last time never sees a windowed flash on the way in. An
+        // absent file is not an error -- it means they have never opened the
+        // options screen, and the defaults are what they would have found.
+        Settings& settings = Settings::instance();
+        (void)settings.loadFromFile(Settings::path());
+
+        screen.setVerticalSync(settings.vsync);
+        if (settings.displayMode != DisplayMode::Windowed)
+            screen.setDisplayMode(settings.displayMode);
 
         Rng rng(m_options.seed);
 

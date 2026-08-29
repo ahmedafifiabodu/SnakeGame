@@ -85,7 +85,7 @@ namespace neoncoil
             std::string(title.begin(), title.end()),
             sf::Style::Titlebar | sf::Style::Close);
 
-        m_window->setVerticalSyncEnabled(true);
+        m_window->setVerticalSyncEnabled(m_vsync);
         m_window->setKeyRepeatEnabled(true);
     }
 
@@ -100,21 +100,32 @@ namespace neoncoil
             m_window->close();
     }
 
-    void Screen::toggleFullscreen()
+    void Screen::setDisplayMode(DisplayMode mode)
     {
         if (!m_window)
             return;
 
-        m_fullscreen = !m_fullscreen;
         const std::string title(m_title.begin(), m_title.end());
+        const sf::VideoMode desktop = sf::VideoMode::getDesktopMode();
 
-        if (m_fullscreen)
+        switch (mode)
         {
-            m_window->create(sf::VideoMode::getDesktopMode(), title, sf::State::Fullscreen);
-        }
-        else
+        case DisplayMode::Fullscreen:
+            m_window->create(desktop, title, sf::State::Fullscreen);
+            break;
+
+        case DisplayMode::Borderless:
+            // Desktop-sized with no decoration. Not the same as fullscreen: the
+            // display mode is left alone, so alt-tab is instant and a second
+            // monitor keeps working. This is what most players actually want
+            // when they say "fullscreen".
+            m_window->create(desktop, title, sf::Style::None);
+            m_window->setPosition({ 0, 0 });
+            break;
+
+        case DisplayMode::Windowed:
+        case DisplayMode::Count:
         {
-            const sf::VideoMode desktop = sf::VideoMode::getDesktopMode();
             unsigned width = static_cast<unsigned>(canvasWidth());
             unsigned height = static_cast<unsigned>(canvasHeight());
             while (width > desktop.size.x - 100 || height > desktop.size.y - 100)
@@ -124,10 +135,34 @@ namespace neoncoil
             }
             m_window->create(sf::VideoMode({ width, height }), title,
                 sf::Style::Titlebar | sf::Style::Close);
+            break;
+        }
         }
 
-        m_window->setVerticalSyncEnabled(true);
+        m_displayMode = mode == DisplayMode::Count ? DisplayMode::Windowed : mode;
+
+        // Recreating the window drops both of these, so they are reapplied every
+        // time rather than only when they change.
+        m_window->setVerticalSyncEnabled(m_vsync);
         m_window->setKeyRepeatEnabled(true);
+    }
+
+    void Screen::setVerticalSync(bool enabled)
+    {
+        m_vsync = enabled;
+        if (m_window)
+            m_window->setVerticalSyncEnabled(enabled);
+    }
+
+    void Screen::toggleFullscreen()
+    {
+        // F11 from anywhere but fullscreen goes fullscreen; from fullscreen it
+        // goes back to windowed. Borderless is reachable from the options
+        // screen, which is where a player goes when they have an opinion about
+        // which of the two they want.
+        setDisplayMode(m_displayMode == DisplayMode::Fullscreen
+            ? DisplayMode::Windowed
+            : DisplayMode::Fullscreen);
     }
 
     void Screen::pumpEvents(Input& input)
@@ -324,12 +359,24 @@ namespace neoncoil
 
     void Screen::glow(float centreX, float centreY, float radius, Color colour, float intensity)
     {
+        // Bloom off means the glow layer is simply never fed. The shapes
+        // underneath are drawn by the cell and sprite layers regardless, so the
+        // board stays readable rather than going dark.
+        if (!Settings::instance().bloom)
+            return;
+
         appendGlowRings(m_glowBatch, centreX - radius, centreY - radius, radius * 2.0f, radius * 2.0f,
             m_atlas.rect(glyph::Circle), colour, radius * 0.9f, intensity);
     }
 
     void Screen::glowRect(float x, float y, float w, float h, Color colour, float spread, float intensity)
     {
+        // Bloom off means the glow layer is simply never fed. The shapes
+        // underneath are drawn by the cell and sprite layers regardless, so the
+        // board stays readable rather than going dark.
+        if (!Settings::instance().bloom)
+            return;
+
         appendGlowRings(m_glowBatch, x, y, w, h, m_solidRect, colour, spread, intensity);
     }
 

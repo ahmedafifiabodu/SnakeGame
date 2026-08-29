@@ -1,12 +1,14 @@
 #include "MenuState.h"
 
 #include "MultiplayerMenuState.h"
+#include "OptionsState.h"
 #include "PlayState.h"
 #include "../core/Glyphs.h"
 #include "../ui/Art.h"
 #include "../ui/Draw.h"
 #include "../ui/Layout.h"
 #include "../ui/Palette.h"
+#include "../ui/SnakeCard.h"
 
 #include <algorithm>
 #include <array>
@@ -63,12 +65,6 @@ namespace neoncoil
             return ((value % count) + count) % count;
         }
 
-        // Small stat readout: "SPEED  ####------".
-        void statBar(Screen& screen, int x, int y, const wchar_t* label, float fraction, Color colour)
-        {
-            screen.text(x, y, label, Color::Silver, Color::Black);
-            ui::progressBar(screen, x + 9, y, 14, fraction, colour, Color::Slate, Color::Black);
-        }
     }
 
     void MenuState::onEnter(AppContext& context)
@@ -164,6 +160,11 @@ namespace neoncoil
     {
         const int fieldCount = static_cast<int>(Field::Count);
 
+        // Options needs no name and starts nothing, so it is checked first and
+        // on its own.
+        if (m_field == Field::Options)
+            return Transition::push(std::make_unique<OptionsState>());
+
         if (m_field == Field::Start || m_field == Field::Multiplayer)
         {
             if (context.profile.name.empty())
@@ -220,8 +221,11 @@ namespace neoncoil
 
             // Clicking a button presses it; clicking a field only focuses it,
             // because there is nothing else a click on a text box should mean.
-            if (m_field == Field::Start || m_field == Field::Multiplayer)
+            if (m_field == Field::Start || m_field == Field::Multiplayer ||
+                m_field == Field::Options)
+            {
                 return confirmField(context);
+            }
         }
 
         return Transition::none();
@@ -368,7 +372,7 @@ namespace neoncoil
         screen.textCenteredIn(inner, boxWidth, typeY + 2, counter, Color::Slate, Color::Black);
 
         // --- how to play ------------------------------------------------------
-        const int tipsY = kConfigY + 17;
+        const int tipsY = kConfigY + 16;
         screen.horizontalLine(inner, tipsY, boxWidth, glyph::ThinH, Color::Slate, Color::Black);
         screen.text(inner, tipsY + 1, L"Reach the level target to advance.", Color::Slate, Color::Black);
         screen.text(inner, tipsY + 2, L"SPACE fires your ability.  P pauses.", Color::Slate, Color::Black);
@@ -397,12 +401,15 @@ namespace neoncoil
                 screen.textCenteredIn(inner, boxWidth, y + 1, note, Color::Slate, Color::Black);
         };
 
-        // Rows 20..23 of a 25-row panel: the note under the second button lands
-        // on the last interior row, clear of the border.
-        button(kConfigY + 20, Field::Start, focusedStart, L"START  GAME", profile.colour,
+        // Rows 19..23 of a 25-row panel. OPTIONS goes last and without a note:
+        // it is the one button whose name already says everything it does, and
+        // dropping its note is what makes three of them fit above the border.
+        button(kConfigY + 19, Field::Start, focusedStart, L"START  GAME", profile.colour,
             L"offline, on your own");
-        button(kConfigY + 22, Field::Multiplayer, focusedMultiplayer, L"MULTIPLAYER", Color::Aqua,
+        button(kConfigY + 21, Field::Multiplayer, focusedMultiplayer, L"MULTIPLAYER", Color::Aqua,
             L"two to four players online");
+        button(kConfigY + 23, Field::Options, m_field == Field::Options, L"OPTIONS",
+            Color::Gold, L"");
     }
 
     void MenuState::renderPortrait(AppContext& context) const
@@ -453,59 +460,9 @@ namespace neoncoil
         screen.horizontalLine(inner, y + 3, previewWidth, glyph::BoxH, type.accent, Color::Transparent);
         y += 6;
 
-        // Live preview: the snake you picked, crawling, in the colour you picked.
-        const int track = previewWidth + 12;
-        const int offset = static_cast<int>(m_elapsed * 9.0f) % track;
-
-        screen.fillRect(inner, y, previewWidth, 1, glyph::Space, Color::Silver, Color::Navy);
-        for (int i = 0; i < 10; ++i)
-        {
-            const int x = inner + ((offset - i + track) % track) - 6;
-            if (x < inner || x >= inner + previewWidth)
-                continue;
-
-            wchar_t body = type.bodyGlyph;
-            if (type.altBodyGlyph != 0 && i % 2 == 0)
-                body = type.altBodyGlyph;
-
-            screen.put(x, y, i == 0 ? type.headGlyph : body,
-                i == 0 ? Color::White : profile.colour, Color::Navy);
-        }
-        y += 2;
-
-        screen.text(inner, y, ui::truncateTo(type.tagline, previewWidth), Color::Silver, Color::Black);
-        y += 2;
-
-        for (const std::wstring& note : type.notes)
-        {
-            screen.put(inner, y, glyph::Bullet, type.accent, Color::Black);
-            screen.text(inner + 2, y, ui::truncateTo(note, previewWidth - 2), Color::Silver, Color::Black);
-            ++y;
-        }
-
-        // --- ability ----------------------------------------------------------
-        screen.horizontalLine(inner, y, previewWidth, glyph::ThinH, Color::Slate, Color::Black);
-        ++y;
-
-        screen.put(inner, y, glyph::Bolt, Color::Gold, Color::Black);
-        screen.text(inner + 2, y, type.ability.name, Color::Gold, Color::Black);
-        ++y;
-
-        for (const std::wstring& line : ui::wrapText(type.ability.summary, previewWidth))
-        {
-            screen.text(inner, y, line, Color::Silver, Color::Black);
-            ++y;
-        }
-
-        std::wstring timing = L"Cooldown " + std::to_wstring(static_cast<int>(type.ability.cooldownSeconds)) + L"s";
-        if (type.ability.durationSeconds > 0.0f)
-            timing += L"   Duration " + std::to_wstring(static_cast<int>(type.ability.durationSeconds)) + L"s";
-        screen.text(inner, y, timing, Color::Slate, Color::Black);
-        ++y;
-
-        // --- stats ------------------------------------------------------------
-        statBar(screen, inner, y++, L"SPEED", (type.speedMultiplier - 0.8f) / 0.6f, type.accent);
-        statBar(screen, inner, y++, L"GROWTH", static_cast<float>(type.growthPerFood) / 3.0f, type.accent);
-        statBar(screen, inner, y++, L"SCORING", (type.scoreMultiplier - 0.8f) / 0.6f, type.accent);
+        // The rest of the panel is the shared field report, so the lobby and this
+        // screen cannot end up describing the same snake differently.
+        ui::drawSnakeReport(screen, inner, y, previewWidth, kTypeY + kTypeH - y - 1,
+            type, profile.colour, m_elapsed);
     }
 }

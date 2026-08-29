@@ -22,6 +22,7 @@ namespace neoncoil
             Type,
             Start,        // offline, no connection and no account needed
             Multiplayer,
+            Options,
             Count
         };
 

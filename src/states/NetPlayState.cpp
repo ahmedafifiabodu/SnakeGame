@@ -1,6 +1,7 @@
 #include "NetPlayState.h"
 
 #include "../core/Glyphs.h"
+#include "../core/Settings.h"
 #include "../game/SnakeType.h"
 #include "../ui/Art.h"
 #include "../ui/Layout.h"
@@ -198,20 +199,40 @@ namespace neoncoil
         screen.text(2, 0, L"CODE " + lobby.code, Color::Slate, Color::Transparent);
         screen.textCenteredIn(0, screen.width(), 0, clock, clockColour, Color::Transparent);
 
-        // The local player's own round trip, top right, where it is out of the
-        // way of the four player columns but never off screen. A host is the far
-        // end of everybody else's connection, so it says so rather than showing
-        // a zero that would read as a suspiciously good ping.
-        if (m_session->isHost())
+        // Top right, out of the way of the four player columns but never off
+        // screen.
+        //
+        // A host has no round trip to itself, so showing it a zero would read as
+        // a suspiciously good ping rather than as "you are the far end". What is
+        // useful to a host is the worst trip anybody else is making, because
+        // that is the number deciding whether the match feels fair.
+        if (Settings::instance().showPing)
         {
-            screen.text(screen.width() - 8, 0, L"HOST", Color::Lime, Color::Transparent);
-        }
-        else
-        {
-            const int ping = m_session->pingMs();
-            const std::wstring text = L"PING " + ui::pingText(ping);
+            std::wstring text;
+            Color colour = Color::Lime;
+
+            if (m_session->isHost())
+            {
+                int worst = -1;
+                for (const net::LobbySlot& seat : m_session->lobby().slots)
+                {
+                    if (seat.occupied && !seat.isHost)
+                        worst = std::max(worst, static_cast<int>(seat.pingMs));
+                }
+
+                text = worst <= 0 ? std::wstring(L"HOST")
+                                  : L"WORST " + ui::pingText(worst);
+                colour = worst <= 0 ? Color::Lime : ui::pingColour(worst);
+            }
+            else
+            {
+                const int ping = m_session->pingMs();
+                text = L"PING " + ui::pingText(ping);
+                colour = ui::pingColour(ping);
+            }
+
             screen.text(screen.width() - static_cast<int>(text.size()) - 2, 0, text,
-                ui::pingColour(ping), Color::Transparent);
+                colour, Color::Transparent);
         }
 
         // --- one column per seat ----------------------------------------------
@@ -251,7 +272,7 @@ namespace neoncoil
             // Every player's ping, next to their name. Seeing that the player
             // who keeps cutting you off is 300 ms away explains a match in a way
             // that seeing only your own number never does.
-            if (width > 6)
+            if (width > 6 && Settings::instance().showPing)
             {
                 const int theirPing = seat.isHost ? 0 : static_cast<int>(seat.pingMs);
                 const std::wstring text = seat.isHost ? std::wstring(L"HOST") : ui::pingText(theirPing);

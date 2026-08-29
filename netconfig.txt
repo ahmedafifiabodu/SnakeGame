@@ -28,14 +28,18 @@
 #
 # Deploy each with tools/deploy_relay.sh, which prints the line to paste here.
 
-relay = M | MIDDLE EAST | 35.252.17.161  | 45700
-relay = U | US CENTRAL  | 34.118.201.82  | 45700
+relay = E | EUROPE     | 34.79.159.135 | 45700
+relay = U | US CENTRAL  | 34.118.201.82 | 45700
 
 # Uncomment as each region comes up.
 #
-# relay = E | EUROPE    | <ip> | 45700
 # relay = A | ASIA      | <ip> | 45700
 # relay = S | S AMERICA | <ip> | 45700
+
+# me-west1 (Tel Aviv) was measured at 81 ms from Cairo and europe-west1
+# (Belgium) at 56 ms, which is not what a map would predict -- Egyptian traffic
+# to Israel routes the long way round. Measured beats assumed, so the Middle
+# East relay is retired rather than kept for the region its name suggests.
 
 # The old untagged relay at 35.222.57.3 is deliberately not listed.
 #
