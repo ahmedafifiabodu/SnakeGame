@@ -4,6 +4,7 @@
 #include "../core/Glyphs.h"
 
 #include <algorithm>
+#include <cctype>
 
 namespace neoncoil::ui
 {
@@ -17,6 +18,34 @@ namespace neoncoil::ui
             screen.text(x, y, label, Color::Silver, Color::Black);
             progressBar(screen, x + 9, y, barWidth, fraction, colour, Color::Slate, Color::Black);
         }
+    }
+
+    std::string portraitPath(const SnakeType& type)
+    {
+        std::string name;
+        name.reserve(type.name.size());
+        for (wchar_t c : type.name)
+            name.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+
+        return "portraits/snake_" + name + ".png";
+    }
+
+    void drawSnakePortrait(Screen& screen, int cellX, int cellY, int cellW, int cellH,
+        const SnakeType& type)
+    {
+        const sf::Texture* portrait = screen.textures().get(portraitPath(type));
+        if (portrait == nullptr || cellW <= 0 || cellH <= 0)
+            return;
+
+        const float x = static_cast<float>(cellX) * Screen::kCellWidth;
+        const float y = static_cast<float>(cellY) * Screen::kCellHeight;
+        const float w = static_cast<float>(cellW) * Screen::kCellWidth;
+        const float h = static_cast<float>(cellH) * Screen::kCellHeight;
+
+        // A soft wash of the snake's own colour behind the art, so each entry
+        // reads as a different card rather than the same dark rectangle.
+        screen.overlayGlowRect(x, y + h * 0.15f, w, h * 0.7f, type.accent, 14.0f, 0.45f);
+        screen.spriteFitted(*portrait, x, y, w, h, Screen::SpriteLayer::Ui);
     }
 
     void drawSnakeStrip(Screen& screen, int x, int y, int width,

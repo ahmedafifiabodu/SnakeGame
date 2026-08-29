@@ -4,6 +4,8 @@
 #include "../core/Screen.h"
 #include "../game/SnakeType.h"
 
+#include <string>
+
 namespace neoncoil::ui
 {
     // "What does this snake actually do": a crawling preview in the player's
@@ -26,4 +28,15 @@ namespace neoncoil::ui
     // the prose. `elapsed` drives the crawl.
     void drawSnakeStrip(Screen& screen, int x, int y, int width,
         const SnakeType& type, Color bodyColour, float elapsed);
+
+    // Where a snake's portrait art lives. Shared because the lobby draws the
+    // same five pictures the main menu does, and a second copy of this rule
+    // would eventually point at a different folder.
+    std::string portraitPath(const SnakeType& type);
+
+    // The portrait, fitted into a cell-grid rectangle with a wash of the
+    // snake's own colour behind it. Draws nothing when the art is missing, so a
+    // build without the assets still runs.
+    void drawSnakePortrait(Screen& screen, int cellX, int cellY, int cellW, int cellH,
+        const SnakeType& type);
 }

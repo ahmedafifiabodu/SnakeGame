@@ -43,16 +43,6 @@ namespace neoncoil
         // Maps a roster entry to its illustration. Derived from the type name so
         // adding a snake needs no extra table -- drop in assets/portraits/
         // snake_<lowercase name>.png and it is picked up.
-        std::string portraitPathFor(const SnakeType& type)
-        {
-            std::string name;
-            name.reserve(type.name.size());
-            for (wchar_t c : type.name)
-                name.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-
-            return "portraits/snake_" + name + ".png";
-        }
-
         int colourIndexOf(Color colour)
         {
             return ui::playerColourIndex(colour);
@@ -417,22 +407,8 @@ namespace neoncoil
         Screen& screen = context.screen;
         const SnakeType& type = context.profile.type();
 
-        const sf::Texture* portrait = screen.textures().get(portraitPathFor(type));
-        if (portrait == nullptr)
-            return;
-
-        // The reserved column, in virtual pixels.
-        const float columnX = static_cast<float>(kTypeX + 2 + kPortraitColumn) * Screen::kCellWidth;
-        const float columnY = static_cast<float>(kTypeY + 2) * Screen::kCellHeight;
-        const float columnW = static_cast<float>(kTypeW - 4 - kPortraitColumn) * Screen::kCellWidth;
-        const float columnH = static_cast<float>(kTypeH - 5) * Screen::kCellHeight;
-
-        // A soft wash of the snake's own colour behind the art, so each entry
-        // reads as a different card rather than the same dark rectangle.
-        screen.overlayGlowRect(columnX, columnY + columnH * 0.15f, columnW, columnH * 0.7f,
-            type.accent, 14.0f, 0.45f);
-
-        screen.spriteFitted(*portrait, columnX, columnY, columnW, columnH, Screen::SpriteLayer::Ui);
+        ui::drawSnakePortrait(screen, kTypeX + 2 + kPortraitColumn, kTypeY + 2,
+            kTypeW - 4 - kPortraitColumn, kTypeH - 5, type);
     }
 
     void MenuState::renderTypePanel(AppContext& context) const

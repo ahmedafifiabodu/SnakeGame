@@ -87,6 +87,7 @@ namespace neoncoil
 
         m_window->setVerticalSyncEnabled(m_vsync);
         m_window->setKeyRepeatEnabled(true);
+        m_window->setMouseCursorVisible(true);
     }
 
     bool Screen::isOpen() const
@@ -141,10 +142,17 @@ namespace neoncoil
 
         m_displayMode = mode == DisplayMode::Count ? DisplayMode::Windowed : mode;
 
-        // Recreating the window drops both of these, so they are reapplied every
+        // Recreating the window drops all of these, so they are reapplied every
         // time rather than only when they change.
         m_window->setVerticalSyncEnabled(m_vsync);
         m_window->setKeyRepeatEnabled(true);
+
+        // Explicit, because this game is played with the mouse as much as the
+        // keyboard -- every menu says CLICK ANYTHING. A window created
+        // fullscreen or borderless does not reliably inherit the cursor state of
+        // the one it replaced, and a menu you cannot see the pointer on is not a
+        // menu you can use.
+        m_window->setMouseCursorVisible(true);
     }
 
     void Screen::setVerticalSync(bool enabled)

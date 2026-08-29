@@ -352,37 +352,37 @@ namespace neoncoil
             screen.textCenteredIn(inner, width, kSlotsY + 2, ui::truncateTo(seat.name, width - 2),
                 Color::Black, accent);
 
-            screen.textCenteredIn(inner, width, kSlotsY + 4, type.name, type.accent, Color::Black);
-            screen.textCenteredIn(inner, width, kSlotsY + 5,
-                ui::truncateTo(type.ability.name, width), Color::Slate, Color::Black);
+            // The same portrait the main menu shows, so a seat is recognisable
+            // as a snake rather than as a name and two words.
+            //
+            // It gets rows of its own rather than sitting behind the text. Art
+            // and small type in the same cells fight each other and the type
+            // loses -- "VIPER" over a picture of a viper reads as neither.
+            ui::drawSnakePortrait(screen, inner + 1, kSlotsY + 3, width - 2, 4, type);
 
-            // A short crawling snake in the player's own colour, so a full lobby
-            // reads at a glance rather than as four identical name cards. Same
-            // strip the field report and the main menu draw, offset per seat so
-            // four of them do not move in lockstep.
-            ui::drawSnakeStrip(screen, inner, kSlotsY + 7, width, type, accent,
-                m_elapsed + static_cast<float>(i) * 0.4f);
+            screen.textCenteredIn(inner, width, kSlotsY + 7, type.name, type.accent, Color::Black);
+            screen.textCenteredIn(inner, width, kSlotsY + 8,
+                ui::truncateTo(type.ability.name, width), Color::Slate, Color::Black);
 
             const wchar_t* tag = seat.isHost ? L"HOST" : (seat.ready ? L"READY" : L"NOT READY");
             const Color tagColour = seat.isHost ? Color::Gold : (seat.ready ? Color::Lime : Color::Slate);
-            screen.textCenteredIn(inner, width, kSlotsY + 9, tag, tagColour, Color::Black);
+            screen.textCenteredIn(inner, width, kSlotsY + 10, tag, tagColour, Color::Black);
 
             // Latency on the seat card, before the match rather than during it.
             // A lobby is where a player can still do something about a bad
             // connection -- once the countdown has run, the number is only ever
             // an explanation.
+            //
+            // Shares the row with the ready tag rather than taking one of its
+            // own: the portrait is worth more than the fourth line of text, and
+            // "READY" and "56 ms" sit side by side without crowding.
             if (!seat.isHost && Settings::instance().showPing)
             {
                 const int ping = seat.pingMs == 0 ? -1 : static_cast<int>(seat.pingMs);
-                screen.textCenteredIn(inner, width, kSlotsY + 8, ui::pingText(ping),
+                const std::wstring text = ui::pingText(ping);
+                screen.text(inner + width - static_cast<int>(text.size()), kSlotsY + 10, text,
                     ui::pingColour(ping), Color::Black);
             }
-
-            // Guest identity is local and unverified today. Saying so on the
-            // card is honest, and it is the line that will read "SIGNED IN" once
-            // accounts exist without the layout changing.
-            screen.textCenteredIn(inner, width, kSlotsY + 10,
-                seat.authenticated ? L"VERIFIED" : L"GUEST", Color::Slate.scaled(1.2f), Color::Black);
         }
     }
 
@@ -509,7 +509,10 @@ namespace neoncoil
         const std::vector<std::wstring>& events = m_session->events();
         if (!events.empty())
         {
-            screen.text(buttonX, optionsY + 4, ui::truncateTo(events.back(), buttonW + 4),
+            // Truncated to the button column, not past it: the field report
+            // starts four cells later, and a long event line was running
+            // straight into "COOLDOWN 8s" with no gap to say where one ended.
+            screen.text(buttonX, optionsY + 4, ui::truncateTo(events.back(), buttonW),
                 Color::Slate.scaled(1.3f), Color::Black);
         }
 
