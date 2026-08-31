@@ -38,7 +38,7 @@ ability sit next to its portrait, so the pick is informed rather than blind.
 sentinels on patrol and a bonus fruit burning down its timer.
 
 <p align="center">
-  <img src="docs/shot_play.png" alt="Level 8 gameplay">
+  <img src="docs/demo_play.gif" alt="Level 8 gameplay">
 </p>
 
 **Four players, one arena.** Eat to score, cut somebody off to score more, respawn a
