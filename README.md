@@ -4,7 +4,9 @@ An arcade snake game in C++20 on SFML. Five snakes with real mechanical
 identities, procedurally generated levels that are *provably* playable, and
 four-player online multiplayer that needs no account and no router configuration.
 
-![Viper on level 8, threading a Pillars layout past four sentinels](docs/demo_play.gif)
+<p align="center">
+  <img src="docs/demo_play.gif" alt="Viper on level 8, threading a Pillars layout past four sentinels">
+</p>
 
 <sup>Every image and clip on this page is the real build, recorded by the game
 itself, offscreen, from a pinned seed. Nothing here was staged.</sup>
@@ -28,42 +30,58 @@ itself, offscreen, from a pinned seed. Nothing here was staged.</sup>
 **The front end.** A name, a colour, and the roster. Each snake's speed, growth and
 ability sit next to its portrait, so the pick is informed rather than blind.
 
-![The main menu, with the Viper field report open](docs/shot_menu.png)
+<p align="center">
+  <img src="docs/shot_menu.png" alt="The main menu, with the Viper field report open">
+</p>
 
 **A run.** Level 8, 405 of the 520 points needed to clear it, on a ×3 combo, four
 sentinels on patrol and a bonus fruit burning down its timer.
 
-![Level 8 gameplay](docs/shot_play.png)
+<p align="center">
+  <img src="docs/shot_play.png" alt="Level 8 gameplay">
+</p>
 
 **Four players, one arena.** Eat to score, cut somebody off to score more, respawn a
 few seconds later. Highest score when the clock runs out.
 
-![Four snakes sharing one arena, eating, dying and respawning](docs/demo_netplay.gif)
+<p align="center">
+  <img src="docs/demo_netplay.gif" alt="Four snakes sharing one arena, eating, dying and respawning">
+</p>
 
 **The lobby.** Four players, four snakes, four colours — each seat showing the snake
 that player actually picked, with its ability under the portrait, so nobody has to
 guess what the table is bringing. The activity feed is real. The host's button names
 whoever it is waiting on, because a lobby never has to fill up — two players is a match.
 
-![A full four-player lobby, each seat showing its snake portrait and ability](docs/shot_lobby.png)
-
-![Players joining, picking snakes and readying up in the lobby](docs/demo_lobby.gif)
+<p align="center">
+  <img src="docs/demo_lobby.gif" alt="Players joining, picking snakes and readying up in the lobby">
+</p>
 
 **Options.** Window mode, vertical sync, volumes and comfort toggles, written to a
 plain text file beside the executable. `F11` toggles fullscreen from anywhere.
 
-![The options screen](docs/shot_options.png)
+<p align="center">
+  <img src="docs/shot_options.png" alt="The options screen">
+</p>
 
 <details>
 <summary>More screens — pause, level clear, game over, the session browser</summary>
 
-![The pause menu over the level 8 board](docs/shot_pause.png)
+<p align="center">
+  <img src="docs/shot_pause.png" alt="The pause menu over the level 8 board">
+</p>
 
-![The level-clear panel after clearing level 7](docs/shot_clear.png)
+<p align="center">
+  <img src="docs/shot_clear.png" alt="The level-clear panel after clearing level 7">
+</p>
 
-![The game over screen after a sixteen-level run](docs/shot_over.png)
+<p align="center">
+  <img src="docs/shot_over.png" alt="The game over screen after a sixteen-level run">
+</p>
 
-![The multiplayer menu, browsing for sessions](docs/shot_netmenu.png)
+<p align="center">
+  <img src="docs/shot_netmenu.png" alt="The multiplayer menu, browsing for sessions">
+</p>
 
 </details>
 
